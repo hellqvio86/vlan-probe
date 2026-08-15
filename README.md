@@ -99,6 +99,9 @@ For each target:
 - `expected_blocked = false` — the probe expects the firewall to **allow** access;
   an unreachable target is reported as a failure 🔴.
 
+Supported protocols: `tcp`, `udp` (with DNS probing on port 53), `icmp` (ping),
+and `sctp`.
+
 ### Options
 
 ```
