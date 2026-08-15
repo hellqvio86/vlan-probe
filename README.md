@@ -138,6 +138,49 @@ Each target declares the firewall policy it expects:
 **Supported protocols:** `tcp` · `udp` (probed with a real DNS query on port
 53) · `icmp` (via `ping`) · `sctp`.
 
+### Environment variables
+
+Every setting that isn't a probe *target* can come from an environment
+variable instead of a flag or the config file. CLI flags win over env vars;
+env vars win over the `[mqtt]` config section. This keeps secrets out of the
+config file and makes containerized/systemd deployments trivial.
+
+**CLI defaults:**
+
+| Env var                | Controls                    | Default                |
+| ---------------------- | --------------------------- | ---------------------- |
+| `VLAN_PROBE_CONFIG`    | config file path            | `/etc/vlan_probe.toml` |
+| `VLAN_PROBE_TIMEOUT`   | probe timeout (seconds)     | `2.0`                  |
+| `VLAN_PROBE_FORMAT`    | output format               | `ndjson`               |
+| `VLAN_PROBE_STRICT`    | strict mode (exit 1)        | `false`                |
+
+**MQTT (`[mqtt]` section, overridable per-key):**
+
+| Env var                            | `[mqtt]` key        |
+| ---------------------------------- | ------------------- |
+| `VLAN_PROBE_MQTT_HOST`             | `host`              |
+| `VLAN_PROBE_MQTT_PORT`             | `port`              |
+| `VLAN_PROBE_MQTT_USERNAME`         | `username`          |
+| `VLAN_PROBE_MQTT_PASSWORD`         | `password`          |
+| `VLAN_PROBE_MQTT_TLS`              | `tls`               |
+| `VLAN_PROBE_MQTT_CA_CERTS`         | `ca_certs`          |
+| `VLAN_PROBE_MQTT_INSECURE`         | `insecure`          |
+| `VLAN_PROBE_MQTT_TOPIC_PREFIX`     | `topic_prefix`      |
+| `VLAN_PROBE_MQTT_RETAIN`           | `retain`            |
+| `VLAN_PROBE_MQTT_QOS`              | `qos`               |
+| `VLAN_PROBE_MQTT_CONNECT_TIMEOUT`  | `connect_timeout`   |
+
+Booleans accept `1`/`true`/`yes`/`on`. A `VLAN_PROBE_MQTT_HOST` alone is
+enough to enable MQTT — no `[mqtt]` section needed:
+
+```bash
+export VLAN_PROBE_MQTT_HOST=mqtt.example.com
+export VLAN_PROBE_MQTT_USERNAME=vlan-probe
+export VLAN_PROBE_MQTT_PASSWORD='s3cret'
+export VLAN_PROBE_MQTT_TLS=true
+vlan-probe --mqtt
+```
+
 ## Usage
 
 ```
@@ -145,7 +188,7 @@ Each target declares the firewall policy it expects:
 -f, --format FORMAT       Output format: ndjson, json, or table (default: ndjson)
 -t, --timeout SECONDS     Socket connection timeout (default: 2.0)
 -s, --strict              Exit with code 1 if any violations occur
---mqtt                    Publish results to MQTT (requires [mqtt] config section)
+--mqtt                    Publish results to MQTT (requires [mqtt] section or VLAN_PROBE_MQTT_HOST)
 --color [auto|always|never]  Colorize output (default: auto)
 ```
 
@@ -255,7 +298,8 @@ vlan-probe --mqtt
 - `vlan-probe/<hostname>/targets/<vlan>/<target>` — one message per target
 
 > A failed MQTT delivery is fatal (exit code 2); probe violations in strict
-> mode still exit 1. `--mqtt` without an `[mqtt]` section is a config error.
+> mode still exit 1. `--mqtt` without an `[mqtt]` section **or**
+> `VLAN_PROBE_MQTT_HOST` is a config error.
 
 ### systemd timer
 
@@ -279,8 +323,8 @@ systemctl --user enable --now vlan-probe.timer
 
 - `journalctl -u vlan-probe` — probe + delivery logs per run
 - `systemctl list-timers vlan-probe` — next scheduled run
-- Broker credentials: `[mqtt]` in the config (chmod 600) or a systemd
-  `EnvironmentFile`
+- Broker credentials: the `[mqtt]` config section (chmod 600) or the
+  `VLAN_PROBE_MQTT_*` environment variables in a systemd `EnvironmentFile`
 
 ---
 

@@ -208,3 +208,46 @@ def test_main_mqtt_failure_with_strict_violation_exits_1(cli_env, monkeypatch, c
     with pytest.raises(SystemExit) as excinfo:
         main()
     assert excinfo.value.code == 1
+
+
+def test_main_env_config_path(cli_env, monkeypatch, capsys):
+    loaded = []
+
+    def recording_load_config(path: str) -> Config:
+        loaded.append(path)
+        return cli_env["config"]
+
+    cli_env["config"] = Config(targets=[])
+    monkeypatch.setattr("vlan_probe.cli.load_config", recording_load_config)
+    monkeypatch.setenv("VLAN_PROBE_CONFIG", "/env/config.toml")
+    _run_main(monkeypatch, ["-f", "json"])
+    main()
+    assert loaded == ["/env/config.toml"]
+
+
+def test_main_env_strict_default(cli_env, monkeypatch, capsys):
+    cli_env["config"] = Config(targets=[{"name": "FAIL"}])
+    monkeypatch.setenv("VLAN_PROBE_STRICT", "1")
+    _run_main(monkeypatch, ["-f", "json"])
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 1
+
+
+def test_main_env_format_default(cli_env, monkeypatch, capsys):
+    cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "FAIL"}])
+    monkeypatch.setenv("VLAN_PROBE_FORMAT", "json")
+    _run_main(monkeypatch, [])
+    main()
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["total_probed"] == 2
+
+
+def test_main_cli_flag_overrides_env(cli_env, monkeypatch, capsys):
+    cli_env["config"] = Config(targets=[{"name": "PASS"}])
+    monkeypatch.setenv("VLAN_PROBE_FORMAT", "json")
+    _run_main(monkeypatch, ["-f", "table"])
+    main()
+    out = capsys.readouterr().out
+    assert "VLAN" in out
+    assert not out.strip().startswith("{")
