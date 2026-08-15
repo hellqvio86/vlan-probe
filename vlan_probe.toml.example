@@ -93,3 +93,19 @@ ip = "8.8.8.8"
 port = 53
 protocol = "udp"
 expected_blocked = false
+
+[[targets]]
+name = "Internal - Gateway Ping"
+vlan = "Internal"
+ip = "10.10.1.1"
+port = 0
+protocol = "icmp"
+expected_blocked = true
+
+[[targets]]
+name = "Internal - Diameter Signalling"
+vlan = "Internal"
+ip = "10.10.1.20"
+port = 3868
+protocol = "sctp"
+expected_blocked = false

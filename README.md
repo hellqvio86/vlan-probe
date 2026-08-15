@@ -6,7 +6,7 @@ unauthorized inter-VLAN access.
 
 [![PyPI - Version](https://img.shields.io/pypi/v/vlan-probe?color=blue)](https://pypi.org/project/vlan-probe/)
 [![PyPI - Python Versions](https://img.shields.io/pypi/pyversions/vlan-probe)](https://pypi.org/project/vlan-probe/)
-[![PyPI - License](https://img.shields.io/pypi/l/vlan-probe)](https://github.com/hellqvio86/vlan-probe/blob/main/LICENSE)
+[![PyPI - License](https://img.shields.io/pypi/l/vlan-probe)](https://github.com/hellqvio86/vlan-probe/blob/main/LICENSE.md)
 [![CI/CD](https://img.shields.io/github/actions/workflow/status/hellqvio86/vlan-probe/ci.yml?branch=main&label=CI/CD)](https://github.com/hellqvio86/vlan-probe/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/hellqvio86/vlan-probe/blob/main/README.md)
 
@@ -89,6 +89,22 @@ vlan = "External"
 ip = "8.8.8.8"
 port = 53
 protocol = "udp"
+expected_blocked = false
+
+[[targets]]
+name = "Internal - Gateway Ping"
+vlan = "Internal"
+ip = "10.10.1.1"
+port = 0
+protocol = "icmp"
+expected_blocked = true
+
+[[targets]]
+name = "Internal - Diameter Signalling"
+vlan = "Internal"
+ip = "10.10.1.20"
+port = 3868
+protocol = "sctp"
 expected_blocked = false
 ```
 
@@ -274,4 +290,4 @@ uv run pytest --cov=src/vlan_probe --cov-report=term-missing
 
 ## License
 
-MIT (see LICENSE)
+[MIT](LICENSE.md)
