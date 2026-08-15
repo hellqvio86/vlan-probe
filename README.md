@@ -290,4 +290,4 @@ uv run pytest --cov=src/vlan_probe --cov-report=term-missing
 
 ## License
 
-MIT (see LICENSE)
+[MIT](LICENSE)
