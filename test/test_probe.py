@@ -1,4 +1,4 @@
-"""Tests for vlan_probe.probe module."""
+"""Tests for vlan_probe.probe module: core probe behavior."""
 
 from vlan_probe.probe import get_local_ips, probe_target
 
@@ -8,6 +8,32 @@ def test_get_local_ips():
     ips = get_local_ips()
     assert isinstance(ips, set)
     assert "127.0.0.1" in ips
+
+
+def test_get_local_ips_ip_command_missing(monkeypatch):
+    """Fall back to hostname resolution when the ``ip`` binary is unavailable."""
+
+    def raise_missing(*args, **kwargs):
+        raise FileNotFoundError("ip command not found")
+
+    monkeypatch.setattr("vlan_probe.probe.subprocess.check_output", raise_missing)
+    ips = get_local_ips()
+    assert isinstance(ips, set)
+    assert "127.0.0.1" in ips
+
+
+def test_get_local_ips_hostname_resolution_fails(monkeypatch):
+    """Both fallback mechanisms failing yields only the loopback address."""
+
+    def raise_missing(*args, **kwargs):
+        raise FileNotFoundError("ip command not found")
+
+    def raise_socket_error(*args, **kwargs):
+        raise OSError("no hostname")
+
+    monkeypatch.setattr("vlan_probe.probe.subprocess.check_output", raise_missing)
+    monkeypatch.setattr("vlan_probe.probe.socket.gethostbyname_ex", raise_socket_error)
+    assert get_local_ips() == {"127.0.0.1"}
 
 
 def test_probe_target_localhost():
@@ -28,39 +54,27 @@ def test_probe_target_localhost():
     assert result["target_vlan"] == "Test"
 
 
-def test_probe_target_unreachable():
-    """Test probing an unreachable host (should fail since it's expected_blocked=True)."""
+def test_probe_port_as_string():
+    """Ports given as strings are coerced to integers."""
     target = {
-        "name": "Unreachable Host",
-        "vlan": "TestVLAN",
-        "ip": "192.0.2.1",  # TEST-NET-1 (non-routable)
-        "port": 80,
+        "name": "String Port",
+        "vlan": "Internal",
+        "ip": "192.0.2.1",
+        "port": "80",
         "protocol": "tcp",
         "expected_blocked": True,
     }
-    result = probe_target(target, timeout=1.0)
+    result = probe_target(target, timeout=0.5, local_ips=set())
+    assert result["port"] == 80
 
-    # Should pass because the target is unreachable (expected_blocked=True means connection should fail)
-    assert result["status"] == "PASS"
+
+def test_probe_target_defaults():
+    """Missing keys fall back to sensible defaults."""
+    target = {"ip": "192.0.2.1"}
+    result = probe_target(target, timeout=0.5, local_ips=set())
+    assert result["target_name"] == "Unknown Target"
+    assert result["target_vlan"] == "Unknown VLAN"
+    assert result["port"] == 80
+    assert result["protocol"] == "tcp"
+    assert result["expected_blocked"] is True
     assert result["reachable"] is False
-
-
-def test_probe_target_required_connectivity():
-    """Test probing a target with expected_blocked=False."""
-    target = {
-        "name": "Required Service",
-        "vlan": "Internet",
-        "ip": "1.1.1.1",  # Cloudflare DNS
-        "port": 53,
-        "protocol": "udp",
-        "expected_blocked": False,
-    }
-    result = probe_target(target, timeout=2.0)
-
-    # We can't guarantee this will succeed in all environments,
-    # so we just verify the structure is correct
-    assert result["status"] in ["PASS", "FAIL"]
-    assert result["target_ip"] == "1.1.1.1"
-    assert result["port"] == 53
-    assert result["protocol"] == "udp"
-    assert result["expected_blocked"] is False

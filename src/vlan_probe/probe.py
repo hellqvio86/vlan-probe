@@ -8,6 +8,8 @@ from typing import Dict, Optional, Set
 
 DEFAULT_TIMEOUT = 2.0
 
+_SCTP_PROTO = getattr(socket, "IPPROTO_SCTP", 132)
+
 
 def get_local_ips() -> Set[str]:
     """Get all local IP addresses on this host."""
@@ -86,6 +88,30 @@ def probe_target(
             reachable = False
         finally:
             sock.close()
+    elif protocol == "icmp":
+        try:
+            completed = subprocess.run(
+                ["ping", "-c", "1", "-W", str(timeout), ip],
+                capture_output=True,
+                text=True,
+                timeout=timeout + 1,
+            )
+            reachable = completed.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            reachable = False
+    elif protocol == "sctp":
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, _SCTP_PROTO)
+            sock.settimeout(timeout)
+            try:
+                sock.connect((ip, port))
+                reachable = True
+            except (socket.timeout, ConnectionRefusedError, OSError):
+                reachable = False
+            finally:
+                sock.close()
+        except OSError:
+            reachable = False
 
     latency_ms = round((time.time() - start_time) * 1000, 2)
 

@@ -2,11 +2,11 @@
 
 import sys
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NoReturn, Optional
 
 try:
-    import tomllib  # Python 3.11+
-except ImportError:
+    import tomllib  # Python 3.11+  # pragma: no cover
+except ImportError:  # pragma: no cover
     try:
         import tomli as tomllib  # Fallback for Python < 3.11
     except ImportError:
@@ -43,7 +43,7 @@ class Config:
     mqtt: Optional[MQTTConfig] = None
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     sys.stderr.write(f"Error: {message}\n")
     sys.exit(2)
 
@@ -52,39 +52,32 @@ def parse_mqtt_config(section: Any) -> MQTTConfig:
     """Parse and validate the ``[mqtt]`` config section."""
     if not isinstance(section, dict):
         _fail("'mqtt' in config must be a table")
-        raise AssertionError("unreachable")
 
     host = section.get("host")
     if not isinstance(host, str) or not host:
         _fail("'mqtt.host' is required")
-        raise AssertionError("unreachable")
 
     port = section.get("port", DEFAULT_MQTT_PORT)
     if not isinstance(port, int) or not (1 <= port <= 65535):
         _fail("'mqtt.port' must be an integer between 1 and 65535")
-        raise AssertionError("unreachable")
 
     qos = section.get("qos", 1)
     if not isinstance(qos, int) or qos not in (0, 1, 2):
         _fail("'mqtt.qos' must be 0, 1, or 2")
-        raise AssertionError("unreachable")
 
     connect_timeout = section.get("connect_timeout", 5.0)
     if not isinstance(connect_timeout, (int, float)) or connect_timeout <= 0:
         _fail("'mqtt.connect_timeout' must be a positive number")
-        raise AssertionError("unreachable")
 
     username = section.get("username")
     password = section.get("password")
     topic_prefix = section.get("topic_prefix", DEFAULT_TOPIC_PREFIX)
     if not isinstance(topic_prefix, str) or not topic_prefix:
         _fail("'mqtt.topic_prefix' must be a non-empty string")
-        raise AssertionError("unreachable")
 
     ca_certs = section.get("ca_certs")
     if ca_certs is not None and not isinstance(ca_certs, str):
         _fail("'mqtt.ca_certs' must be a string path")
-        raise AssertionError("unreachable")
 
     return MQTTConfig(
         host=host,

@@ -53,6 +53,9 @@ def test_parse_mqtt_config_full():
         {"host": "h", "connect_timeout": -1},
         {"host": ""},
         {"host": "h", "topic_prefix": ""},
+        {"host": "h", "ca_certs": 123},
+        "not a table",
+        ["not", "a", "table"],
     ],
 )
 def test_parse_mqtt_config_invalid(section):
@@ -79,3 +82,44 @@ def test_load_config_without_mqtt(tmp_path):
     config_file.write_text('[[targets]]\nname = "A"\nvlan = "V"\nip = "10.0.0.1"\nport = 1\nprotocol = "tcp"\n')
     cfg = load_config(str(config_file))
     assert cfg.mqtt is None
+
+
+def test_load_config_missing_file(tmp_path):
+    with pytest.raises(SystemExit) as excinfo:
+        load_config(str(tmp_path / "nope.toml"))
+    assert excinfo.value.code == 2
+
+
+def test_load_config_invalid_json(tmp_path):
+    config_file = tmp_path / "config.json"
+    config_file.write_text("{ this is not valid json")
+    with pytest.raises(SystemExit) as excinfo:
+        load_config(str(config_file))
+    assert excinfo.value.code == 2
+
+
+def test_load_config_json_list(tmp_path):
+    config_file = tmp_path / "config.json"
+    config_file.write_text('[{"name": "A", "vlan": "V", "ip": "10.0.0.1", "port": 22}]')
+    cfg = load_config(str(config_file))
+    assert len(cfg.targets) == 1
+    assert cfg.targets[0]["name"] == "A"
+    assert cfg.mqtt is None
+
+
+def test_load_config_targets_not_a_list(tmp_path):
+    config_file = tmp_path / "config.json"
+    config_file.write_text('{"targets": "not a list"}')
+    with pytest.raises(SystemExit) as excinfo:
+        load_config(str(config_file))
+    assert excinfo.value.code == 2
+
+
+def test_load_config_no_tomli(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("vlan_probe.config.tomllib", None)
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("")
+    with pytest.raises(SystemExit) as excinfo:
+        load_config(str(config_file))
+    assert excinfo.value.code == 2
+    assert "tomli" in capsys.readouterr().err
