@@ -31,7 +31,9 @@ jobs:
     if: |
       github.event_name != 'workflow_dispatch' ||
       inputs.job == 'all' ||
-      inputs.job == 'lint'
+      inputs.job == 'lint' ||
+      inputs.job == 'draft-release' ||
+      inputs.job == 'publish'
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -66,7 +68,9 @@ jobs:
     if: |
       github.event_name != 'workflow_dispatch' ||
       inputs.job == 'all' ||
-      inputs.job == 'test'
+      inputs.job == 'test' ||
+      inputs.job == 'draft-release' ||
+      inputs.job == 'publish'
     strategy:
       fail-fast: false
       matrix:
@@ -140,7 +144,7 @@ jobs:
     name: Publish to PyPI
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'publish'))
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.job == 'publish')
     environment: pypi
     permissions:
       contents: read
