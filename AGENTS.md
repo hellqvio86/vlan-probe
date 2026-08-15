@@ -41,6 +41,11 @@ uv run pytest
   `Any` sparingly.
 - **Use named (keyword) arguments** when calling functions, especially for
   non-obvious parameters, so calls stay readable.
+- **Every code path must be covered by a meaningful test.** `pytest` runs with
+  `--cov-fail-under=100`; coverage is reported in the README. Write honest
+  tests that exercise real behavior (loopback sockets, real config files) and
+  mock only system boundaries. Do not add synthetic targets just to inflate
+  coverage.
 
 ## Dependency changes
 

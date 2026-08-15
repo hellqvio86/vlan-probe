@@ -153,6 +153,17 @@ def test_main_strict_exits_1(cli_env, monkeypatch, capsys):
     assert "unauthorized connection" in err
 
 
+def test_main_strict_color_exits_1(cli_env, monkeypatch, capsys):
+    cli_env["config"] = Config(targets=[{"name": "FAIL"}])
+    _run_main(monkeypatch, ["-s", "-f", "json", "--color", "always"])
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "\033[1m" in err  # bold violation header
+    assert "\033[31m" in err  # red violation lines
+
+
 def test_main_mqtt_without_section_exits_2(cli_env, monkeypatch, capsys):
     cli_env["config"] = Config(targets=[{"name": "PASS"}])
     _run_main(monkeypatch, ["--mqtt"])

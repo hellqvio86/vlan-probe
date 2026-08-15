@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, NoReturn, Optional
 
 try:
-    import tomllib  # Python 3.11+
-except ImportError:
+    import tomllib  # Python 3.11+  # pragma: no cover
+except ImportError:  # pragma: no cover
     try:
         import tomli as tomllib  # Fallback for Python < 3.11
     except ImportError:

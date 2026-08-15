@@ -8,6 +8,7 @@ unauthorized inter-VLAN access.
 [![PyPI - Python Versions](https://img.shields.io/pypi/pyversions/vlan-probe)](https://pypi.org/project/vlan-probe/)
 [![PyPI - License](https://img.shields.io/pypi/l/vlan-probe)](https://github.com/hellqvio86/vlan-probe/blob/main/LICENSE)
 [![CI/CD](https://img.shields.io/github/actions/workflow/status/hellqvio86/vlan-probe/ci.yml?branch=main&label=CI/CD)](https://github.com/hellqvio86/vlan-probe/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/hellqvio86/vlan-probe/blob/main/README.md)
 
 `vlan-probe` is a command-line tool. Install it with [pipx](https://pipx.pypa.io/)
 so it runs in an isolated environment and the `vlan-probe` command is available
@@ -257,6 +258,15 @@ uv sync          # install dev dependencies
 uv run pytest    # run tests
 uv run ruff check . && uv run ruff format --check .   # lint
 uv run mypy src  # type check
+```
+
+### Test coverage 🛡️
+
+Every code path is covered by a test; `pytest` fails if coverage drops below
+100% (`--cov-fail-under=100`). Run the suite with coverage:
+
+```bash
+uv run pytest --cov=src/vlan_probe --cov-report=term-missing
 ```
 
 ## License
