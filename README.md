@@ -1,8 +1,8 @@
 # vlan-probe 🛡️
 
-VLAN Isolation & Network Permission Probe Tool — verify your firewall rules by
-probing target VLAN subnets, IPs, and ports from the host and reporting any
-unauthorized inter-VLAN access.
+> **VLAN Isolation & Network Permission Probe Tool** — verify your firewall
+> rules by probing target VLAN subnets, IPs, and ports from the host, and get
+> alerted to any unauthorized inter-VLAN access.
 
 [![PyPI - Version](https://img.shields.io/pypi/v/vlan-probe?color=blue)](https://pypi.org/project/vlan-probe/)
 [![PyPI - Python Versions](https://img.shields.io/pypi/pyversions/vlan-probe)](https://pypi.org/project/vlan-probe/)
@@ -10,17 +10,44 @@ unauthorized inter-VLAN access.
 [![CI/CD](https://img.shields.io/github/actions/workflow/status/hellqvio86/vlan-probe/ci.yml?branch=main&label=CI/CD)](https://github.com/hellqvio86/vlan-probe/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/hellqvio86/vlan-probe/blob/main/README.md)
 
-`vlan-probe` is a command-line tool. Install it with [pipx](https://pipx.pypa.io/)
-so it runs in an isolated environment and the `vlan-probe` command is available
-on your `PATH`.
+---
+
+## ✨ Features
+
+- **Multi-protocol probing** — `tcp`, `udp` (DNS-aware on port 53), `icmp`
+  (ping), and `sctp`.
+- **Policy-first configuration** — declare what *should* be blocked vs.
+  reachable; every deviation is reported as a violation 🔴.
+- **Flexible output** — human-friendly `table`, structured `json`, or
+  streaming `ndjson`.
+- **Alerting built-in** — `--strict` exit codes for automation, plus scheduled
+  **MQTT reporting** via `systemd` timers 📡.
+- **Boring & reliable** — typed Python 3.10+, zero long-running daemons, 100%
+  test coverage.
+
+## 📑 Table of contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Scheduled MQTT reporting](#scheduled-mqtt-reporting-)
+- [Development](#development-)
+
+---
 
 ## Requirements
 
-- Python 3.10 or newer
+- **Python 3.10 or newer**
+- Linux (uses the `ip` and `ping` utilities)
 
 ## Installation
 
 ### Install with pipx (recommended)
+
+`vlan-probe` is a command-line tool — [pipx](https://pipx.pypa.io/) runs it in
+an isolated environment while keeping the `vlan-probe` command on your `PATH`.
 
 ```bash
 pipx install vlan-probe
@@ -32,39 +59,40 @@ Upgrade to a newer release:
 pipx upgrade vlan-probe
 ```
 
-If you do not already have pipx, install it first (macOS/Homebrew, Debian/Ubuntu
-or Arch examples; see the [pipx docs](https://pipx.pypa.io/) for other systems):
+Don't have pipx yet? Install it first:
 
 ```bash
-brew install pipx && pipx ensurepath
-# or
-apt install pipx && pipx ensurepath
-# or
-pacman -S python-pipx && pipx ensurepath
+brew install pipx && pipx ensurepath      # macOS/Homebrew
+apt install pipx && pipx ensurepath       # Debian/Ubuntu
+pacman -S python-pipx && pipx ensurepath  # Arch
 ```
 
 ### Install from source
 
 ```bash
-# with pipx
-pipx install .
-
-# with uv (alternative)
-uv tool install .
-
-# or install directly into your environment
-pip install .
+pipx install .          # via pipx
+uv tool install .       # via uv
+pip install .           # into the active environment
 ```
 
-## Usage 📡
+## Quick start
 
-1. Install or copy to a host.
-2. Create a TOML config at `/etc/vlan_probe.toml` or pass `-c` to point to a different file.
-3. Run `vlan-probe -f table` or `python -m vlan_probe -f table`.
+```bash
+# 1. copy the example config and edit it to match your network
+cp vlan_probe.toml.example /etc/vlan_probe.toml
 
-### Configuration
+# 2. probe everything and show a human-friendly table
+vlan-probe -f table
 
-Configuration uses TOML format for easy human readability and simplicity:
+# 3. or go headless: JSON to stdout, exit 1 on any violation
+vlan-probe -f json -s
+```
+
+## Configuration
+
+Configuration lives in a single [TOML](https://toml.io/) file — readable,
+diff-able, and easy to keep in git. By default it is read from
+`/etc/vlan_probe.toml`; use `-c <path>` for another location.
 
 ```toml
 [[targets]]
@@ -72,14 +100,6 @@ name = "Internal - Device A SSH"
 vlan = "Internal"
 ip = "10.10.1.10"
 port = 22
-protocol = "tcp"
-expected_blocked = true
-
-[[targets]]
-name = "Internal - Gateway HTTP"
-vlan = "Internal"
-ip = "10.10.1.1"
-port = 80
 protocol = "tcp"
 expected_blocked = true
 
@@ -108,17 +128,17 @@ protocol = "sctp"
 expected_blocked = false
 ```
 
-For each target:
+Each target declares the firewall policy it expects:
 
-- `expected_blocked = true` — the probe expects the firewall to **deny** access;
-  a reachable target is reported as a violation 🔴.
-- `expected_blocked = false` — the probe expects the firewall to **allow** access;
-  an unreachable target is reported as a failure 🔴.
+| `expected_blocked` | Policy        | Reported when…                                       |
+| ------------------ | ------------- | ---------------------------------------------------- |
+| `true`             | **deny**      | target is *reachable* → violation 🔴                  |
+| `false`            | **allow**     | target is *unreachable* → failure 🔴                  |
 
-Supported protocols: `tcp`, `udp` (with DNS probing on port 53), `icmp` (ping),
-and `sctp`.
+**Supported protocols:** `tcp` · `udp` (probed with a real DNS query on port
+53) · `icmp` (via `ping`) · `sctp`.
 
-### Options
+## Usage
 
 ```
 -c, --config PATH         Path to config TOML file (default: /etc/vlan_probe.toml)
@@ -129,14 +149,84 @@ and `sctp`.
 --color [auto|always|never]  Colorize output (default: auto)
 ```
 
-### Scheduled MQTT reporting ⏱️
+```bash
+# table output
+vlan-probe -c ./vlan_probe.toml -f table
 
-Run the probe on a schedule and publish results to an MQTT broker so dashboards
-and automations can track VLAN isolation state over time. Scheduling is handled
-by a `systemd` timer — each run is a short-lived process that probes, publishes,
-and exits.
+# json output
+vlan-probe -f json
 
-Add an `[mqtt]` section to the config file:
+# strict mode with a custom timeout
+vlan-probe -s -t 5.0
+
+# no color
+vlan-probe -f table --color never
+```
+
+### Exit codes
+
+| Code | Meaning                                             |
+| ---- | --------------------------------------------------- |
+| `0`  | all checks passed                                   |
+| `1`  | violations detected (with `--strict`)               |
+| `2`  | configuration error or MQTT delivery failure        |
+
+### Output formats
+
+Table (IPs are fictional):
+
+```text
+VLAN         TARGET                         ENDPOINT               STATUS   DETAILS
+------------------------------------------------------------------------------------------
+Internal     Internal - Device A SSH        10.10.1.10:22 (tcp)    PASS     OK
+Internal     Internal - DNS Server          10.10.1.1:53 (udp)     PASS     OK
+IoT          IoT - Device B                 10.10.2.50:80 (tcp)    PASS     OK
+DMZ          DMZ - Web Server               10.10.4.50:80 (tcp)    FAIL     EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server (10.10.4.50:80)
+External     External - Public DNS          8.8.8.8:53 (udp)       PASS     OK
+```
+
+JSON — a run summary with totals and violations:
+
+```json
+{
+  "timestamp": "2026-08-15T07:56:17.397044+00:00",
+  "total_probed": 12,
+  "passed": 10,
+  "failed": 2,
+  "violations": [
+    {
+      "vlan": "DMZ",
+      "target": "DMZ - Web Server",
+      "ip": "10.10.4.50",
+      "port": 80,
+      "error": "EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server (10.10.4.50:80)"
+    }
+  ]
+}
+```
+
+NDJSON — one object per probed target, ideal for streaming/ingestion:
+
+```json
+{"timestamp": "2026-08-15T07:55:15.797713+00:00", "target_name": "Internal - Device A SSH", "target_vlan": "Internal", "target_ip": "10.10.1.10", "port": 22, "protocol": "tcp", "reachable": false, "expected_blocked": true, "status": "PASS", "latency_ms": 1001.0, "error": null}
+```
+
+Strict mode (`-s`) writes failures to stderr and exits with code 1:
+
+```text
+🚨 2 unauthorized connection(s) detected!
+  - EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server (10.10.4.50:80)
+  - EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server HTTPS (10.10.4.50:443)
+```
+
+## Scheduled MQTT reporting ⏱️
+
+Run the probe on a schedule and publish results to an MQTT broker so
+dashboards and automations can track VLAN isolation state over time. A
+`systemd` timer wakes a short-lived process that probes, publishes, and exits —
+no daemon, no state to babysit.
+
+Add an `[mqtt]` section to the config:
 
 ```toml
 [mqtt]
@@ -153,21 +243,21 @@ qos = 1                               # optional, default 1
 connect_timeout = 5.0                 # optional, default 5.0
 ```
 
-Then run with `--mqtt`:
+…and run with `--mqtt`:
 
 ```bash
 vlan-probe --mqtt
 ```
 
-Topics published (all retained at QoS 1):
+**Topics published** (all retained at QoS 1):
 
-- `vlan-probe/<hostname>/summary` — run summary JSON (totals + violations)
-- `vlan-probe/<hostname>/targets/<vlan>/<target>` — one message per probed target
+- `vlan-probe/<hostname>/summary` — run summary (totals + violations)
+- `vlan-probe/<hostname>/targets/<vlan>/<target>` — one message per target
 
-A failed MQTT delivery is fatal (exit code 2); probe violations in strict mode
-still exit 1. `--mqtt` without an `[mqtt]` section is a config error.
+> A failed MQTT delivery is fatal (exit code 2); probe violations in strict
+> mode still exit 1. `--mqtt` without an `[mqtt]` section is a config error.
 
-#### systemd timer
+### systemd timer
 
 Ship the example units and enable the timer (adjust the interval in
 `vlan-probe.timer`, default every 5 minutes):
@@ -185,107 +275,48 @@ systemctl --user daemon-reload
 systemctl --user enable --now vlan-probe.timer
 ```
 
-Ops:
+**Ops tips:**
 
-- `journalctl -u vlan-probe` — probe + delivery logs per run.
-- `systemctl list-timers vlan-probe` — next scheduled run.
+- `journalctl -u vlan-probe` — probe + delivery logs per run
+- `systemctl list-timers vlan-probe` — next scheduled run
 - Broker credentials: `[mqtt]` in the config (chmod 600) or a systemd
-  `EnvironmentFile`.
+  `EnvironmentFile`
 
-### Examples
-
-```bash
-# Display as table
-vlan-probe -c ./vlan_probe.toml -f table
-
-# Output JSON
-vlan-probe -f json
-
-# Strict mode with custom timeout
-vlan-probe -s -t 5.0
-
-# No color output
-vlan-probe -f table --color never
-```
-
-### Example runs
-
-Table output (IPs are fictional):
-
-```text
-VLAN         TARGET                         ENDPOINT               STATUS   DETAILS
-------------------------------------------------------------------------------------------
-Internal     Internal - Device A SSH        10.10.1.10:22 (tcp)    PASS     OK
-Internal     Internal - Device A HTTP       10.10.1.10:8080 (tcp)  PASS     OK
-Internal     Internal - DNS Server          10.10.1.1:53 (udp)     PASS     OK
-Internal     Internal - Gateway SSH         10.10.1.1:22 (tcp)     PASS     OK
-Internal     Internal - Gateway HTTPS       10.10.1.1:443 (tcp)    PASS     OK
-Internal     Internal - Gateway HTTP        10.10.1.1:80 (tcp)     PASS     OK
-IoT          IoT - Device B                 10.10.2.50:80 (tcp)    PASS     OK
-IoT          IoT - Device C                 10.10.2.100:80 (tcp)   PASS     OK
-Guest        Guest - Gateway                10.10.3.1:80 (tcp)     PASS     OK
-DMZ          DMZ - Web Server               10.10.4.50:80 (tcp)    FAIL     EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server (10.10.4.50:80)
-DMZ          DMZ - Web Server HTTPS         10.10.4.50:443 (tcp)   FAIL     EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server HTTPS (10.10.4.50:443)
-External     External - Public DNS          8.8.8.8:53 (udp)       PASS     OK
-```
-
-JSON output:
-
-```json
-{
-  "timestamp": "2026-08-15T07:56:17.397044+00:00",
-  "total_probed": 12,
-  "passed": 10,
-  "failed": 2,
-  "violations": [
-    {
-      "vlan": "DMZ",
-      "target": "DMZ - Web Server",
-      "ip": "10.10.4.50",
-      "port": 80,
-      "error": "EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server (10.10.4.50:80)"
-    },
-    {
-      "vlan": "DMZ",
-      "target": "DMZ - Web Server HTTPS",
-      "ip": "10.10.4.50",
-      "port": 443,
-      "error": "EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server HTTPS (10.10.4.50:443)"
-    }
-  ]
-}
-```
-
-NDJSON output (one JSON object per probed target):
-
-```json
-{"timestamp": "2026-08-15T07:55:15.797713+00:00", "target_name": "Internal - Device A SSH", "target_vlan": "Internal", "target_ip": "10.10.1.10", "port": 22, "protocol": "tcp", "reachable": false, "expected_blocked": true, "status": "PASS", "latency_ms": 1001.0, "error": null}
-```
-
-Strict mode (`-s`) writes failures to stderr and exits with code 1:
-
-```text
-🚨 2 unauthorized connection(s) detected!
-  - EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server (10.10.4.50:80)
-  - EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server HTTPS (10.10.4.50:443)
-```
+---
 
 ## Development 🧑‍💻
 
+The repository ships a [`Makefile`](Makefile) wrapping `uv` — that's the
+supported way to work in this project.
+
+| Command           | What it does                                            |
+| ----------------- | ------------------------------------------------------- |
+| `make venv`       | create the virtualenv and install dev dependencies      |
+| `make lint`       | ruff lint **and** format check                          |
+| `make format`     | auto-format the code with ruff                          |
+| `make test`       | mypy type-check + pytest with 100% coverage gate        |
+| `make run`        | run the CLI, e.g. `make run ARGS="-f table"`            |
+| `make build`      | build sdist + wheel                                     |
+| `make publish`    | build and publish to PyPI                               |
+| `make install`    | install the package into a uv tool environment          |
+| `make clean`      | remove the venv and build/cache artifacts               |
+
 ```bash
-uv sync          # install dev dependencies
-uv run pytest    # run tests
-uv run ruff check . && uv run ruff format --check .   # lint
-uv run mypy src  # type check
+make venv    # one-time setup
+make lint    # before pushing
+make test    # before pushing
 ```
 
 ### Test coverage 🛡️
 
-Every code path is covered by a test; `pytest` fails if coverage drops below
-100% (`--cov-fail-under=100`). Run the suite with coverage:
+Every code path is covered by a meaningful test — real loopback sockets and
+real config files, mocking only system boundaries. `pytest` fails if coverage
+drops below 100% (`--cov-fail-under=100`). Run the suite with a coverage
+report:
 
 ```bash
-uv run pytest --cov=src/vlan_probe --cov-report=term-missing
+make test                      # mypy + pytest with coverage
+make run ARGS="-f table"       # try it out
 ```
 
 ## License
