@@ -5,10 +5,9 @@ import datetime
 import json
 import os
 import sys
-from typing import Any, Dict, List
 
 from .config import DEFAULT_CONFIG_PATH, load_config
-from .probe import probe_target, get_local_ips
+from .probe import get_local_ips, probe_target
 
 # ANSI color codes for interactive (TTY) output.
 _COLORS = {
@@ -53,12 +52,8 @@ def colorize_json_statuses(line: str, color: bool) -> str:
 
 def main() -> None:
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description="Probe VLAN network access and verify isolation permissions."
-    )
-    parser.add_argument(
-        "-c", "--config", default=DEFAULT_CONFIG_PATH, help="Path to config JSON file"
-    )
+    parser = argparse.ArgumentParser(description="Probe VLAN network access and verify isolation permissions.")
+    parser.add_argument("-c", "--config", default=DEFAULT_CONFIG_PATH, help="Path to config JSON file")
     parser.add_argument(
         "-f",
         "--format",
@@ -145,11 +140,9 @@ def main() -> None:
             if color:
                 status_color = "red" if status == "FAIL" else "green"
                 details_color = "red" if status == "FAIL" else "green"
-                status = colorize(status, status_color)
-                details = colorize(details, details_color)
-            print(
-                f"{r['target_vlan']:<12} {r['target_name']:<30} {endpoint:<22} {status:<8} {details}"
-            )
+                status = colorize(str(status), status_color)
+                details = colorize(str(details), details_color)
+            print(f"{r['target_vlan']:<12} {r['target_name']:<30} {endpoint:<22} {status:<8} {details}")
 
     if args.strict and violations:
         head = f"{len(violations)} unauthorized connection(s) detected!"
