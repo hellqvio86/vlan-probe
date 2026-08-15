@@ -33,6 +33,14 @@ uv run mypy src
 uv run pytest
 ```
 
+## Code quality
+
+- **Typing is optional.** Add type annotations where they improve clarity, but
+  do not force them everywhere (`mypy` runs with `disallow_untyped_defs =
+  false`).
+- **Use named (keyword) arguments** when calling functions, especially for
+  non-obvious parameters, so calls stay readable.
+
 ## Dependency changes
 
 - Use `uv` for dependency management. When adding/updating dependencies, run
