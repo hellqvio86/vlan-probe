@@ -1,0 +1,57 @@
+[project]
+name = "vlan-probe"
+version = "0.1.0"
+description = "VLAN Isolation & Network Permission Probe Tool"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "hellqvio"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    'tomli>=1.2.0;python_version<"3.11"',
+]
+
+[project.scripts]
+vlan-probe = "vlan_probe.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vlan_probe"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.3.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "types-tomli>=0.2.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = []
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = "test_*.py"
+addopts = "-v --tb=short"

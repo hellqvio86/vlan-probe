@@ -1,0 +1,95 @@
+[[targets]]
+name = "Internal - Device A SSH"
+vlan = "Internal"
+ip = "192.168.1.10"
+port = 22
+protocol = "tcp"
+expected_blocked = true
+
+[[targets]]
+name = "Internal - Device A HTTP"
+vlan = "Internal"
+ip = "192.168.1.10"
+port = 8080
+protocol = "tcp"
+expected_blocked = true
+
+[[targets]]
+name = "Internal - DNS Server"
+vlan = "Internal"
+ip = "192.168.1.1"
+port = 53
+protocol = "udp"
+expected_blocked = true
+
+[[targets]]
+name = "Internal - Gateway SSH"
+vlan = "Internal"
+ip = "192.168.1.1"
+port = 22
+protocol = "tcp"
+expected_blocked = true
+
+[[targets]]
+name = "Internal - Gateway HTTPS"
+vlan = "Internal"
+ip = "192.168.1.1"
+port = 443
+protocol = "tcp"
+expected_blocked = true
+
+[[targets]]
+name = "Internal - Gateway HTTP"
+vlan = "Internal"
+ip = "192.168.1.1"
+port = 80
+protocol = "tcp"
+expected_blocked = true
+
+[[targets]]
+name = "IoT - Device B"
+vlan = "IoT"
+ip = "192.168.2.50"
+port = 80
+protocol = "tcp"
+expected_blocked = true
+
+[[targets]]
+name = "IoT - Device C"
+vlan = "IoT"
+ip = "192.168.2.100"
+port = 80
+protocol = "tcp"
+expected_blocked = true
+
+[[targets]]
+name = "Guest - Gateway"
+vlan = "Guest"
+ip = "192.168.3.1"
+port = 80
+protocol = "tcp"
+expected_blocked = true
+
+[[targets]]
+name = "DMZ - Web Server"
+vlan = "DMZ"
+ip = "192.168.4.50"
+port = 80
+protocol = "tcp"
+expected_blocked = false
+
+[[targets]]
+name = "DMZ - Web Server HTTPS"
+vlan = "DMZ"
+ip = "192.168.4.50"
+port = 443
+protocol = "tcp"
+expected_blocked = false
+
+[[targets]]
+name = "External - Public DNS"
+vlan = "External"
+ip = "8.8.8.8"
+port = 53
+protocol = "udp"
+expected_blocked = false
