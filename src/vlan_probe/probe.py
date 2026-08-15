@@ -49,7 +49,7 @@ def probe_target(
     name = str(target.get("name", "Unknown Target"))
     vlan = str(target.get("vlan", "Unknown VLAN"))
     ip = str(target.get("ip"))
-    port = int(target.get("port", 80))
+    port = int(str(target.get("port", 80)))
     protocol = str(target.get("protocol", "tcp")).lower()
     expected_blocked = bool(target.get("expected_blocked", True))
 
@@ -73,10 +73,7 @@ def probe_target(
         sock.settimeout(timeout)
         try:
             if port == 53:
-                dns_query = (
-                    b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
-                    b"\x07example\x03com\x00\x00\x01\x00\x01"
-                )
+                dns_query = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x07example\x03com\x00\x00\x01\x00\x01"
                 sock.sendto(dns_query, (ip, port))
             else:
                 sock.sendto(b"\x00", (ip, port))
@@ -93,7 +90,9 @@ def probe_target(
 
     if is_self:
         passed = True
-        error_details: Optional[str] = f"EXEMPT_SELF_HOST: Target {ip}:{port} ({name}) is the local interface of the probing host"
+        error_details: Optional[str] = (
+            f"EXEMPT_SELF_HOST: Target {ip}:{port} ({name}) is the local interface of the probing host"
+        )
     elif expected_blocked:
         passed = not reachable
         if reachable:
