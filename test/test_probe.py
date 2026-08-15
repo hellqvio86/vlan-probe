@@ -1,6 +1,5 @@
 """Tests for vlan_probe.probe module."""
 
-import pytest
 from vlan_probe.probe import get_local_ips, probe_target
 
 
@@ -22,7 +21,7 @@ def test_probe_target_localhost():
         "expected_blocked": True,
     }
     result = probe_target(target, timeout=1.0)
-    
+
     assert result["status"] == "PASS"
     assert "EXEMPT_SELF_HOST" in result["error"]
     assert result["target_name"] == "Test Localhost"
@@ -40,7 +39,7 @@ def test_probe_target_unreachable():
         "expected_blocked": True,
     }
     result = probe_target(target, timeout=1.0)
-    
+
     # Should pass because the target is unreachable (expected_blocked=True means connection should fail)
     assert result["status"] == "PASS"
     assert result["reachable"] is False
@@ -57,7 +56,7 @@ def test_probe_target_required_connectivity():
         "expected_blocked": False,
     }
     result = probe_target(target, timeout=2.0)
-    
+
     # We can't guarantee this will succeed in all environments,
     # so we just verify the structure is correct
     assert result["status"] in ["PASS", "FAIL"]
