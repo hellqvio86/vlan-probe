@@ -49,7 +49,8 @@ def probe_target(
     name = str(target.get("name", "Unknown Target"))
     vlan = str(target.get("vlan", "Unknown VLAN"))
     ip = str(target.get("ip"))
-    port = int(str(target.get("port", 80)))
+    port_raw = target.get("port", 80)
+    port = int(port_raw) if isinstance(port_raw, (int, str)) else 80
     protocol = str(target.get("protocol", "tcp")).lower()
     expected_blocked = bool(target.get("expected_blocked", True))
 
