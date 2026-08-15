@@ -122,16 +122,16 @@ jobs:
 
       - name: Get package version
         id: version
-        run: echo "version=$(grep -m1 '^version' pyproject.toml | cut -d'\"' -f2)" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(grep -m1 '^version' pyproject.toml | cut -d' ' -f3 | tr -d '\"')" >> "$GITHUB_OUTPUT"
 
       - name: Create draft release
         id: release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          release_name: Release v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
           draft: true
           prerelease: false
           files: dist/*
