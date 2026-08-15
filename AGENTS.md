@@ -59,5 +59,6 @@ uv run pytest
 - Releases are cut from `main` only.
 - Bump the version in `pyproject.toml` **and** `src/vlan_probe/__init__.py`
   (`__version__`), then run `uv lock`.
-- Create the GitHub release with tag `v<version>`; publishing the distribution
-  to PyPI is handled by the GitLab CI workflow (trusted publishing).
+- Releases are created **only by the GitHub workflow** — never create tags or
+  releases from the CLI with `gh`. Publishing the distribution to PyPI is
+  handled by the GitLab CI workflow (trusted publishing).
