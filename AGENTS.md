@@ -35,9 +35,10 @@ uv run pytest
 
 ## Code quality
 
-- **Typing is optional.** Add type annotations where they improve clarity, but
-  do not force them everywhere (`mypy` runs with `disallow_untyped_defs =
-  false`).
+- **Typing is required.** Add type annotations to all function and method
+  signatures (`mypy` runs with `disallow_untyped_defs = true`). Use precise
+  types where they add clarity (e.g. `Optional`, `List[...]`), and `--cast`/
+  `Any` sparingly.
 - **Use named (keyword) arguments** when calling functions, especially for
   non-obvious parameters, so calls stay readable.
 
