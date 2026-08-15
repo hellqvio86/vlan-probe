@@ -69,7 +69,7 @@ Configuration uses TOML format for easy human readability and simplicity:
 [[targets]]
 name = "Internal - Device A SSH"
 vlan = "Internal"
-ip = "192.168.1.10"
+ip = "10.10.1.10"
 port = 22
 protocol = "tcp"
 expected_blocked = true
@@ -77,7 +77,7 @@ expected_blocked = true
 [[targets]]
 name = "Internal - Gateway HTTP"
 vlan = "Internal"
-ip = "192.168.2.1"
+ip = "10.10.1.1"
 port = 80
 protocol = "tcp"
 expected_blocked = true
@@ -122,6 +122,68 @@ vlan-probe -s -t 5.0
 
 # No color output
 vlan-probe -f table --color never
+```
+
+### Example runs
+
+Table output (IPs are fictional):
+
+```text
+VLAN         TARGET                         ENDPOINT               STATUS   DETAILS
+------------------------------------------------------------------------------------------
+Internal     Internal - Device A SSH        10.10.1.10:22 (tcp)    PASS     OK
+Internal     Internal - Device A HTTP       10.10.1.10:8080 (tcp)  PASS     OK
+Internal     Internal - DNS Server          10.10.1.1:53 (udp)     PASS     OK
+Internal     Internal - Gateway SSH         10.10.1.1:22 (tcp)     PASS     OK
+Internal     Internal - Gateway HTTPS       10.10.1.1:443 (tcp)    PASS     OK
+Internal     Internal - Gateway HTTP        10.10.1.1:80 (tcp)     PASS     OK
+IoT          IoT - Device B                 10.10.2.50:80 (tcp)    PASS     OK
+IoT          IoT - Device C                 10.10.2.100:80 (tcp)   PASS     OK
+Guest        Guest - Gateway                10.10.3.1:80 (tcp)     PASS     OK
+DMZ          DMZ - Web Server               10.10.4.50:80 (tcp)    FAIL     EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server (10.10.4.50:80)
+DMZ          DMZ - Web Server HTTPS         10.10.4.50:443 (tcp)   FAIL     EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server HTTPS (10.10.4.50:443)
+External     External - Public DNS          8.8.8.8:53 (udp)       PASS     OK
+```
+
+JSON output:
+
+```json
+{
+  "timestamp": "2026-08-15T07:56:17.397044+00:00",
+  "total_probed": 12,
+  "passed": 10,
+  "failed": 2,
+  "violations": [
+    {
+      "vlan": "DMZ",
+      "target": "DMZ - Web Server",
+      "ip": "10.10.4.50",
+      "port": 80,
+      "error": "EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server (10.10.4.50:80)"
+    },
+    {
+      "vlan": "DMZ",
+      "target": "DMZ - Web Server HTTPS",
+      "ip": "10.10.4.50",
+      "port": 443,
+      "error": "EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server HTTPS (10.10.4.50:443)"
+    }
+  ]
+}
+```
+
+NDJSON output (one JSON object per probed target):
+
+```json
+{"timestamp": "2026-08-15T07:55:15.797713+00:00", "target_name": "Internal - Device A SSH", "target_vlan": "Internal", "target_ip": "10.10.1.10", "port": 22, "protocol": "tcp", "reachable": false, "expected_blocked": true, "status": "PASS", "latency_ms": 1001.0, "error": null}
+```
+
+Strict mode (`-s`) writes failures to stderr and exits with code 1:
+
+```text
+🚨 2 unauthorized connection(s) detected!
+  - EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server (10.10.4.50:80)
+  - EXPECTED_CONNECTIVITY_FAILED: Failed to connect to DMZ - Web Server HTTPS (10.10.4.50:443)
 ```
 
 ## Development 🧑‍💻
