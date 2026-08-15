@@ -1,7 +1,13 @@
-# vlan-probe
+# vlan-probe 🛡️
 
-VLAN Isolation & Network Permission Probe Tool — standalone project extracted
-from the Ansible role in ansible-home-baseline.
+VLAN Isolation & Network Permission Probe Tool — verify your firewall rules by
+probing target VLAN subnets, IPs, and ports from the host and reporting any
+unauthorized inter-VLAN access.
+
+[![PyPI - Version](https://img.shields.io/pypi/v/vlan-probe?color=blue)](https://pypi.org/project/vlan-probe/)
+[![PyPI - Python Versions](https://img.shields.io/pypi/pyversions/vlan-probe)](https://pypi.org/project/vlan-probe/)
+[![PyPI - License](https://img.shields.io/pypi/l/vlan-probe)](https://github.com/hellqvio86/vlan-probe/blob/main/LICENSE)
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/hellqvio86/vlan-probe/ci.yml?branch=main&label=CI/CD)](https://github.com/hellqvio86/vlan-probe/actions/workflows/ci.yml)
 
 `vlan-probe` is a command-line tool. Install it with [pipx](https://pipx.pypa.io/)
 so it runs in an isolated environment and the `vlan-probe` command is available
@@ -49,7 +55,7 @@ uv tool install .
 pip install .
 ```
 
-## Usage
+## Usage 📡
 
 1. Install or copy to a host.
 2. Create a TOML config at `/etc/vlan_probe.toml` or pass `-c` to point to a different file.
@@ -85,6 +91,13 @@ protocol = "udp"
 expected_blocked = false
 ```
 
+For each target:
+
+- `expected_blocked = true` — the probe expects the firewall to **deny** access;
+  a reachable target is reported as a violation 🔴.
+- `expected_blocked = false` — the probe expects the firewall to **allow** access;
+  an unreachable target is reported as a failure 🔴.
+
 ### Options
 
 ```
@@ -111,7 +124,7 @@ vlan-probe -s -t 5.0
 vlan-probe -f table --color never
 ```
 
-## Development
+## Development 🧑‍💻
 
 ```bash
 uv sync          # install dev dependencies
