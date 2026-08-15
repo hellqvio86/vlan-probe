@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "VLAN Isolation & Network Permission Probe Tool"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "hellqvio"}
 ]
@@ -17,6 +17,10 @@ classifiers = [
 dependencies = [
     'tomli>=1.2.0;python_version<"3.11"',
 ]
+
+[project.urls]
+Homepage = "https://github.com/hellqvio86/vlan-probe"
+Repository = "https://github.com/hellqvio86/vlan-probe"
 
 [project.scripts]
 vlan-probe = "vlan_probe.cli:main"

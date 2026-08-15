@@ -120,15 +120,21 @@ jobs:
       - name: Build distribution
         run: uv build
 
+      - name: Get package version
+        id: version
+        run: echo "version=$(grep -m1 '^version' pyproject.toml | cut -d'\"' -f2)" >> "$GITHUB_OUTPUT"
+
       - name: Create draft release
-        uses: actions/create-release@v1
+        id: release
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }}
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: Release v${{ steps.version.outputs.version }}
           draft: true
           prerelease: false
+          files: dist/*
 
   publish:
     name: Publish to PyPI
