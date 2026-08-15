@@ -33,8 +33,7 @@ def load_config(config_path: str) -> List[Dict[str, Any]]:
         if config_path.endswith(".toml"):
             if tomllib is None:
                 sys.stderr.write(
-                    "Error: TOML support requires 'tomli' package for Python < 3.11. "
-                    "Install with: pip install tomli\n"
+                    "Error: TOML support requires 'tomli' package for Python < 3.11. Install with: pip install tomli\n"
                 )
                 sys.exit(2)
             with open(config_path, "rb") as f:
