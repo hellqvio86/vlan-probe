@@ -1,3 +1,8 @@
+# vlan-probe configuration — the [[targets]] probes below cannot be set via
+# env vars. Everything else (config path, timeout, format, strict mode and the
+# [mqtt] section) is overridable through VLAN_PROBE_* environment variables;
+# see the README for the full list.
+
 [[targets]]
 name = "Internal - Device A SSH"
 vlan = "Internal"

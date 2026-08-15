@@ -6,7 +6,7 @@ import json
 import os
 import sys
 
-from .config import DEFAULT_CONFIG_PATH, load_config
+from .config import VALID_FORMATS, default_config_path, default_format, default_strict, default_timeout, load_config
 from .mqtt_report import MQTTPublishError, build_messages, publish_to_mqtt
 from .probe import get_local_ips, probe_target
 
@@ -54,25 +54,26 @@ def colorize_json_statuses(line: str, color: bool) -> str:
 def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Probe VLAN network access and verify isolation permissions.")
-    parser.add_argument("-c", "--config", default=DEFAULT_CONFIG_PATH, help="Path to config JSON file")
+    parser.add_argument("-c", "--config", default=default_config_path(), help="Path to config TOML file")
     parser.add_argument(
         "-f",
         "--format",
-        choices=["ndjson", "json", "table"],
-        default="ndjson",
+        choices=list(VALID_FORMATS),
+        default=default_format(),
         help="Output format (default: ndjson).",
     )
     parser.add_argument(
         "-t",
         "--timeout",
         type=float,
-        default=2.0,
+        default=default_timeout(),
         help="Socket connection timeout in seconds",
     )
     parser.add_argument(
         "-s",
         "--strict",
         action="store_true",
+        default=default_strict(),
         help="Exit with code 1 if any access violation / test failure occurs",
     )
     parser.add_argument(
