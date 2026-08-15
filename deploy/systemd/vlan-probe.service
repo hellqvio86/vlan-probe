@@ -1,0 +1,14 @@
+[Unit]
+Description=VLAN probe run (publish to MQTT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+ExecStart=/usr/local/bin/vlan-probe --mqtt
+EnvironmentFile=-/etc/vlan_probe.env
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

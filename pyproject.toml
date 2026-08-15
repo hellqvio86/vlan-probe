@@ -1,6 +1,6 @@
 [project]
 name = "vlan-probe"
-version = "0.1.0"
+version = "0.2.0"
 description = "VLAN Isolation & Network Permission Probe Tool"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,6 +16,7 @@ classifiers = [
 ]
 dependencies = [
     'tomli>=1.2.0;python_version<"3.11"',
+    "paho-mqtt>=2.0",
 ]
 
 [project.urls]

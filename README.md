@@ -105,8 +105,72 @@ For each target:
 -f, --format FORMAT       Output format: ndjson, json, or table (default: ndjson)
 -t, --timeout SECONDS     Socket connection timeout (default: 2.0)
 -s, --strict              Exit with code 1 if any violations occur
+--mqtt                    Publish results to MQTT (requires [mqtt] config section)
 --color [auto|always|never]  Colorize output (default: auto)
 ```
+
+### Scheduled MQTT reporting ⏱️
+
+Run the probe on a schedule and publish results to an MQTT broker so dashboards
+and automations can track VLAN isolation state over time. Scheduling is handled
+by a `systemd` timer — each run is a short-lived process that probes, publishes,
+and exits.
+
+Add an `[mqtt]` section to the config file:
+
+```toml
+[mqtt]
+host = "mqtt.example.com"
+port = 8883
+username = "vlan-probe"               # optional
+password = "s3cret"                   # optional
+tls = true                            # optional, default false
+ca_certs = "/etc/ssl/certs/ca-certificates.crt"  # optional
+insecure = false                      # optional
+topic_prefix = "vlan-probe"           # optional, default "vlan-probe"
+retain = true                         # optional, default true
+qos = 1                               # optional, default 1
+connect_timeout = 5.0                 # optional, default 5.0
+```
+
+Then run with `--mqtt`:
+
+```bash
+vlan-probe --mqtt
+```
+
+Topics published (all retained at QoS 1):
+
+- `vlan-probe/<hostname>/summary` — run summary JSON (totals + violations)
+- `vlan-probe/<hostname>/targets/<vlan>/<target>` — one message per probed target
+
+A failed MQTT delivery is fatal (exit code 2); probe violations in strict mode
+still exit 1. `--mqtt` without an `[mqtt]` section is a config error.
+
+#### systemd timer
+
+Ship the example units and enable the timer (adjust the interval in
+`vlan-probe.timer`, default every 5 minutes):
+
+```bash
+# system-wide (root)
+sudo cp deploy/systemd/vlan-probe.service deploy/systemd/vlan-probe.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now vlan-probe.timer
+
+# user (no root)
+mkdir -p ~/.config/systemd/user
+cp deploy/systemd/user/vlan-probe.service deploy/systemd/user/vlan-probe.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now vlan-probe.timer
+```
+
+Ops:
+
+- `journalctl -u vlan-probe` — probe + delivery logs per run.
+- `systemctl list-timers vlan-probe` — next scheduled run.
+- Broker credentials: `[mqtt]` in the config (chmod 600) or a systemd
+  `EnvironmentFile`.
 
 ### Examples
 

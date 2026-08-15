@@ -1,0 +1,6 @@
+[Unit]
+Description=VLAN probe run (publish to MQTT)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/vlan-probe --mqtt

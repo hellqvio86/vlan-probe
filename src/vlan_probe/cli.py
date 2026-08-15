@@ -7,6 +7,7 @@ import os
 import sys
 
 from .config import DEFAULT_CONFIG_PATH, load_config
+from .mqtt_report import MQTTPublishError, build_messages, publish_to_mqtt
 from .probe import get_local_ips, probe_target
 
 # ANSI color codes for interactive (TTY) output.
@@ -75,6 +76,11 @@ def main() -> None:
         help="Exit with code 1 if any access violation / test failure occurs",
     )
     parser.add_argument(
+        "--mqtt",
+        action="store_true",
+        help="Publish probe results to MQTT (requires a [mqtt] config section)",
+    )
+    parser.add_argument(
         "--color",
         choices=["auto", "always", "never"],
         default="auto",
@@ -83,7 +89,12 @@ def main() -> None:
     args = parser.parse_args()
     color = resolve_color_mode(args.color)
 
-    targets = load_config(args.config)
+    config = load_config(args.config)
+    targets = config.targets
+
+    if args.mqtt and config.mqtt is None:
+        sys.stderr.write("Error: --mqtt requires a [mqtt] section in the config file\n")
+        sys.exit(2)
 
     results = []
     violations = []
@@ -98,24 +109,25 @@ def main() -> None:
         if args.format == "ndjson":
             print(colorize_json_statuses(json.dumps(res), color))
 
+    summary = {
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "total_probed": len(results),
+        "passed": len(results) - len(violations),
+        "failed": len(violations),
+        "violations": [
+            {
+                "vlan": v["target_vlan"],
+                "target": v["target_name"],
+                "ip": v["target_ip"],
+                "port": v["port"],
+                "error": v["error"],
+            }
+            for v in violations
+        ],
+        "results": results,
+    }
+
     if args.format == "json":
-        summary = {
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "total_probed": len(results),
-            "passed": len(results) - len(violations),
-            "failed": len(violations),
-            "violations": [
-                {
-                    "vlan": v["target_vlan"],
-                    "target": v["target_name"],
-                    "ip": v["target_ip"],
-                    "port": v["port"],
-                    "error": v["error"],
-                }
-                for v in violations
-            ],
-            "results": results,
-        }
         print(colorize_json_statuses(json.dumps(summary, indent=2), color))
 
     elif args.format == "table":
@@ -144,6 +156,16 @@ def main() -> None:
                 details = colorize(str(details), details_color)
             print(f"{r['target_vlan']:<12} {r['target_name']:<30} {endpoint:<22} {status:<8} {details}")
 
+    mqtt_failed = False
+    if args.mqtt:
+        assert config.mqtt is not None
+        messages = build_messages(results, summary, config.mqtt)
+        try:
+            publish_to_mqtt(config.mqtt, messages)
+        except MQTTPublishError as e:
+            sys.stderr.write(f"MQTT: {e}\n")
+            mqtt_failed = True
+
     if args.strict and violations:
         head = f"{len(violations)} unauthorized connection(s) detected!"
         if color:
@@ -153,6 +175,9 @@ def main() -> None:
             line = f"  - {v['error']}"
             sys.stderr.write((colorize(line, "red") if color else line) + "\n")
         sys.exit(1)
+
+    if mqtt_failed:
+        sys.exit(2)
 
 
 if __name__ == "__main__":
