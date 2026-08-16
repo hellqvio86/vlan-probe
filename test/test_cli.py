@@ -178,9 +178,38 @@ def test_main_mqtt_success(cli_env, monkeypatch, capsys):
     cli_env["config"] = Config(targets=[{"name": "PASS"}], mqtt=MQTTConfig(host="broker"))
     monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
     monkeypatch.setattr("vlan_probe.cli.publish_to_mqtt", lambda cfg, msgs: published.append(msgs))
-    _run_main(monkeypatch, ["--mqtt"])
+    _run_main(monkeypatch, ["--mqtt", "--color", "always"])
     main()
     assert published == [[("t", "{}")]]
+    out = capsys.readouterr().out
+    assert "MQTT Report" in out
+    assert "\033[32mPASS\033[0m" in out
+
+
+def test_main_mqtt_success_json_format(cli_env, monkeypatch, capsys):
+    published = []
+    cli_env["config"] = Config(targets=[{"name": "PASS"}], mqtt=MQTTConfig(host="broker"))
+    monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
+    monkeypatch.setattr("vlan_probe.cli.publish_to_mqtt", lambda cfg, msgs: published.append(msgs))
+    _run_main(monkeypatch, ["--mqtt", "-f", "json"])
+    main()
+    assert published == [[("t", "{}")]]
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["mqtt"]["status"] == "PASS"
+    assert summary["mqtt"]["published"] == 1
+
+
+def test_main_mqtt_success_table_format(cli_env, monkeypatch, capsys):
+    published = []
+    cli_env["config"] = Config(targets=[{"name": "PASS"}], mqtt=MQTTConfig(host="broker"))
+    monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
+    monkeypatch.setattr("vlan_probe.cli.publish_to_mqtt", lambda cfg, msgs: published.append(msgs))
+    _run_main(monkeypatch, ["--mqtt", "-f", "table", "--color", "always"])
+    main()
+    assert published == [[("t", "{}")]]
+    out = capsys.readouterr().out
+    assert "MQTT" in out
+    assert "Published 1 msg(s)" in out
 
 
 def test_main_mqtt_failure_exits_2(cli_env, monkeypatch, capsys):
@@ -190,11 +219,30 @@ def test_main_mqtt_failure_exits_2(cli_env, monkeypatch, capsys):
         "vlan_probe.cli.publish_to_mqtt",
         lambda cfg, msgs: (_ for _ in ()).throw(MQTTPublishError("boom")),
     )
-    _run_main(monkeypatch, ["--mqtt"])
+    _run_main(monkeypatch, ["--mqtt", "--color", "always"])
     with pytest.raises(SystemExit) as excinfo:
         main()
     assert excinfo.value.code == 2
-    assert "MQTT: boom" in capsys.readouterr().err
+    out = capsys.readouterr().out
+    assert "MQTT Report" in out
+    assert "\033[31mFAIL\033[0m" in out
+    assert "boom" in out
+
+
+def test_main_mqtt_failure_table_format(cli_env, monkeypatch, capsys):
+    cli_env["config"] = Config(targets=[{"name": "PASS"}], mqtt=MQTTConfig(host="broker"))
+    monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
+    monkeypatch.setattr(
+        "vlan_probe.cli.publish_to_mqtt",
+        lambda cfg, msgs: (_ for _ in ()).throw(MQTTPublishError("boom")),
+    )
+    _run_main(monkeypatch, ["--mqtt", "-f", "table", "--color", "never"])
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 2
+    out = capsys.readouterr().out
+    assert "MQTT" in out
+    assert "boom" in out
 
 
 def test_main_mqtt_failure_with_strict_violation_exits_1(cli_env, monkeypatch, capsys):
