@@ -107,9 +107,6 @@ def main() -> None:
         if res["status"] == "FAIL":
             violations.append(res)
 
-        if args.format == "ndjson":
-            print(colorize_json_statuses(json.dumps(res), color))
-
     summary = {
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "total_probed": len(results),
@@ -128,7 +125,41 @@ def main() -> None:
         "results": results,
     }
 
-    if args.format == "json":
+    mqtt_res = None
+    mqtt_failed = False
+    if args.mqtt:
+        assert config.mqtt is not None
+        messages = build_messages(results, summary, config.mqtt)
+        mqtt_error = None
+        try:
+            publish_to_mqtt(config.mqtt, messages)
+        except MQTTPublishError as e:
+            mqtt_error = str(e)
+            mqtt_failed = True
+
+        mqtt_res = {
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "target_name": f"MQTT Report ({config.mqtt.host}:{config.mqtt.port})",
+            "target_vlan": "MQTT",
+            "target_ip": config.mqtt.host,
+            "port": config.mqtt.port,
+            "protocol": "tcp",
+            "reachable": not mqtt_failed,
+            "expected_blocked": False,
+            "status": "FAIL" if mqtt_failed else "PASS",
+            "published": len(messages) if not mqtt_failed else 0,
+            "error": mqtt_error,
+        }
+
+    if args.format == "ndjson":
+        for res in results:
+            print(colorize_json_statuses(json.dumps(res), color))
+        if mqtt_res:
+            print(colorize_json_statuses(json.dumps(mqtt_res), color))
+
+    elif args.format == "json":
+        if mqtt_res:
+            summary["mqtt"] = mqtt_res
         print(colorize_json_statuses(json.dumps(summary, indent=2), color))
 
     elif args.format == "table":
@@ -156,16 +187,16 @@ def main() -> None:
                 status = colorize(str(status), status_color)
                 details = colorize(str(details), details_color)
             print(f"{r['target_vlan']:<12} {r['target_name']:<30} {endpoint:<22} {status:<8} {details}")
-
-    mqtt_failed = False
-    if args.mqtt:
-        assert config.mqtt is not None
-        messages = build_messages(results, summary, config.mqtt)
-        try:
-            publish_to_mqtt(config.mqtt, messages)
-        except MQTTPublishError as e:
-            sys.stderr.write(f"MQTT: {e}\n")
-            mqtt_failed = True
+        if mqtt_res:
+            endpoint = f"{mqtt_res['target_ip']}:{mqtt_res['port']} ({mqtt_res['protocol']})"
+            details = mqtt_res["error"] if mqtt_res["error"] else f"Published {mqtt_res['published']} msg(s)"
+            status = mqtt_res["status"]
+            if color:
+                status_color = "red" if status == "FAIL" else "green"
+                details_color = "red" if status == "FAIL" else "green"
+                status = colorize(str(status), status_color)
+                details = colorize(str(details), details_color)
+            print(f"{mqtt_res['target_vlan']:<12} {mqtt_res['target_name']:<30} {endpoint:<22} {status:<8} {details}")
 
     if args.strict and violations:
         head = f"{len(violations)} unauthorized connection(s) detected!"
