@@ -64,6 +64,7 @@ def test_probe_tcp_reachable_expected_blocked() -> None:
         result = probe_target(target, timeout=2.0, local_ips=set())
         assert result["reachable"] is True
         assert result["status"] == "FAIL"
+        assert isinstance(result["error"], str)
         assert "UNAUTHORIZED_CONNECTIVITY_VIOLATION" in result["error"]
     finally:
         server.close()
@@ -85,4 +86,5 @@ def test_probe_tcp_closed_port_expected_open() -> None:
     result = probe_target(target, timeout=1.0, local_ips=set())
     assert result["reachable"] is False
     assert result["status"] == "FAIL"
+    assert isinstance(result["error"], str)
     assert "EXPECTED_CONNECTIVITY_FAILED" in result["error"]

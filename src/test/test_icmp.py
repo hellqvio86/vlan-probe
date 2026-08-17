@@ -60,6 +60,7 @@ def test_probe_icmp_reachable_expected_blocked(monkeypatch: pytest.MonkeyPatch) 
     result = probe_target(_target(), timeout=1.0, local_ips=set())
     assert result["reachable"] is True
     assert result["status"] == "FAIL"
+    assert isinstance(result["error"], str)
     assert "UNAUTHORIZED_CONNECTIVITY_VIOLATION" in result["error"]
 
 

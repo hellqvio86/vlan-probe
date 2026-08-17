@@ -95,7 +95,7 @@ def test_build_topic_prefix() -> None:
 
 
 def test_build_messages_layout() -> None:
-    results = [
+    results: list[dict[str, Any]] = [
         {"target_name": "Device A", "target_vlan": "Internal", "status": "PASS"},
         {"target_name": "Web Server", "target_vlan": "DMZ", "status": "FAIL"},
     ]
@@ -112,7 +112,7 @@ def test_build_messages_layout() -> None:
 
 
 def test_build_messages_collision() -> None:
-    results = [
+    results: list[dict[str, Any]] = [
         {"target_name": "Device A", "target_vlan": "Internal", "status": "PASS"},
         {"target_name": "Device.A", "target_vlan": "Internal", "status": "PASS"},
     ]

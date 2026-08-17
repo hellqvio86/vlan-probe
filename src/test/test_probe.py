@@ -53,6 +53,7 @@ def test_probe_target_localhost() -> None:
     result = probe_target(target, timeout=1.0)
 
     assert result["status"] == "PASS"
+    assert isinstance(result["error"], str)
     assert "EXEMPT_SELF_HOST" in result["error"]
     assert result["target_name"] == "Test Localhost"
     assert result["target_vlan"] == "Test"
@@ -60,7 +61,7 @@ def test_probe_target_localhost() -> None:
 
 def test_probe_port_as_string() -> None:
     """Ports given as strings are coerced to integers."""
-    target = {
+    target: dict[str, Any] = {
         "name": "String Port",
         "vlan": "Internal",
         "ip": "192.0.2.1",
@@ -74,7 +75,7 @@ def test_probe_port_as_string() -> None:
 
 def test_probe_target_defaults() -> None:
     """Missing keys fall back to sensible defaults."""
-    target = {"ip": "192.0.2.1"}
+    target: dict[str, Any] = {"ip": "192.0.2.1"}
     result = probe_target(target, timeout=0.5, local_ips=set())
     assert result["target_name"] == "Unknown Target"
     assert result["target_vlan"] == "Unknown VLAN"
