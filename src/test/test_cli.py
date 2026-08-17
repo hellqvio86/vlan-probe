@@ -2,7 +2,7 @@
 
 import json
 import sys
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Set
 
 import pytest
 
@@ -39,17 +39,22 @@ FAIL_RESULT: Dict[str, object] = {
 
 
 @pytest.fixture
-def cli_env(monkeypatch):
+def cli_env(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
     """Mock out config loading, probing and MQTT publishing."""
-    sentinel = {"config": None}
+    sentinel: Dict[str, Any] = {"config": None}
 
     def fake_load_config(path: str) -> Config:
-        return sentinel["config"]
+        cfg: Config = sentinel["config"]
+        return cfg
 
-    def fake_get_local_ips() -> set:
+    def fake_get_local_ips() -> Set[str]:
         return {"127.0.0.1"}
 
-    def fake_probe_target(target, timeout, local_ips) -> Dict[str, object]:
+    def fake_probe_target(
+        target: Dict[str, Any],
+        timeout: float = 1.0,
+        local_ips: Optional[Set[str]] = None,
+    ) -> Dict[str, object]:
         name = str(target.get("name"))
         if name == "FAIL":
             return FAIL_RESULT
@@ -61,21 +66,21 @@ def cli_env(monkeypatch):
     return sentinel
 
 
-def _run_main(monkeypatch, argv: List[str]) -> None:
+def _run_main(monkeypatch: pytest.MonkeyPatch, argv: List[str]) -> None:
     monkeypatch.setattr(sys, "argv", ["vlan-probe"] + argv)
 
 
-def test_colorize():
+def test_colorize() -> None:
     assert colorize("x", "") == "x"
     assert colorize("x", "red") == "\033[31mx\033[0m"
 
 
-def test_may_colorize_no_tty(monkeypatch):
+def test_may_colorize_no_tty(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "stdout", sys.stderr)  # not a TTY in CI
     assert may_colorize() is False
 
 
-def test_may_colorize_tty(monkeypatch):
+def test_may_colorize_tty(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeTty:
         def isatty(self) -> bool:
             return True
@@ -86,13 +91,13 @@ def test_may_colorize_tty(monkeypatch):
     assert may_colorize() is False
 
 
-def test_resolve_color_mode():
+def test_resolve_color_mode() -> None:
     assert resolve_color_mode("always") is True
     assert resolve_color_mode("never") is False
     assert resolve_color_mode("auto") is False  # non-TTY
 
 
-def test_colorize_json_statuses():
+def test_colorize_json_statuses() -> None:
     line = '"status": "PASS"'
     assert colorize_json_statuses(line, False) == line
     colored = colorize_json_statuses('{"status": "PASS", "status": "FAIL"}', True)
@@ -100,7 +105,9 @@ def test_colorize_json_statuses():
     assert "\033[31mFAIL\033[0m" in colored
 
 
-def test_main_ndjson(cli_env, monkeypatch, capsys):
+def test_main_ndjson(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "FAIL"}])
     _run_main(monkeypatch, ["-f", "ndjson"])
     main()
@@ -111,7 +118,9 @@ def test_main_ndjson(cli_env, monkeypatch, capsys):
     assert first["target_name"] == "Device A"
 
 
-def test_main_json(cli_env, monkeypatch, capsys):
+def test_main_json(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "FAIL"}])
     _run_main(monkeypatch, ["-f", "json"])
     main()
@@ -123,7 +132,9 @@ def test_main_json(cli_env, monkeypatch, capsys):
     assert len(summary["results"]) == 2
 
 
-def test_main_table(cli_env, monkeypatch, capsys):
+def test_main_table(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "FAIL"}])
     _run_main(monkeypatch, ["-f", "table"])
     main()
@@ -133,7 +144,9 @@ def test_main_table(cli_env, monkeypatch, capsys):
     assert "PASS" in out and "FAIL" in out
 
 
-def test_main_table_color(cli_env, monkeypatch, capsys):
+def test_main_table_color(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "FAIL"}])
     _run_main(monkeypatch, ["-f", "table", "--color", "always"])
     main()
@@ -143,7 +156,9 @@ def test_main_table_color(cli_env, monkeypatch, capsys):
     assert "\033[31m" in out  # red FAIL
 
 
-def test_main_strict_exits_1(cli_env, monkeypatch, capsys):
+def test_main_strict_exits_1(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "FAIL"}])
     _run_main(monkeypatch, ["-s", "-f", "json"])
     with pytest.raises(SystemExit) as excinfo:
@@ -153,7 +168,9 @@ def test_main_strict_exits_1(cli_env, monkeypatch, capsys):
     assert "unauthorized connection" in err
 
 
-def test_main_strict_color_exits_1(cli_env, monkeypatch, capsys):
+def test_main_strict_color_exits_1(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "FAIL"}])
     _run_main(monkeypatch, ["-s", "-f", "json", "--color", "always"])
     with pytest.raises(SystemExit) as excinfo:
@@ -164,7 +181,9 @@ def test_main_strict_color_exits_1(cli_env, monkeypatch, capsys):
     assert "\033[31m" in err  # red violation lines
 
 
-def test_main_mqtt_without_section_exits_2(cli_env, monkeypatch, capsys):
+def test_main_mqtt_without_section_exits_2(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "PASS"}])
     _run_main(monkeypatch, ["--mqtt"])
     with pytest.raises(SystemExit) as excinfo:
@@ -173,8 +192,10 @@ def test_main_mqtt_without_section_exits_2(cli_env, monkeypatch, capsys):
     assert "[mqtt]" in capsys.readouterr().err
 
 
-def test_main_mqtt_success(cli_env, monkeypatch, capsys):
-    published = []
+def test_main_mqtt_success(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    published: List[Any] = []
     cli_env["config"] = Config(targets=[{"name": "PASS"}], mqtt=MQTTConfig(host="broker"))
     monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
     monkeypatch.setattr("vlan_probe.cli.publish_to_mqtt", lambda cfg, msgs: published.append(msgs))
@@ -186,8 +207,10 @@ def test_main_mqtt_success(cli_env, monkeypatch, capsys):
     assert "\033[32mPASS\033[0m" in out
 
 
-def test_main_mqtt_success_json_format(cli_env, monkeypatch, capsys):
-    published = []
+def test_main_mqtt_success_json_format(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    published: List[Any] = []
     cli_env["config"] = Config(targets=[{"name": "PASS"}], mqtt=MQTTConfig(host="broker"))
     monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
     monkeypatch.setattr("vlan_probe.cli.publish_to_mqtt", lambda cfg, msgs: published.append(msgs))
@@ -199,8 +222,10 @@ def test_main_mqtt_success_json_format(cli_env, monkeypatch, capsys):
     assert summary["mqtt"]["published"] == 1
 
 
-def test_main_mqtt_success_table_format(cli_env, monkeypatch, capsys):
-    published = []
+def test_main_mqtt_success_table_format(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    published: List[Any] = []
     cli_env["config"] = Config(targets=[{"name": "PASS"}], mqtt=MQTTConfig(host="broker"))
     monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
     monkeypatch.setattr("vlan_probe.cli.publish_to_mqtt", lambda cfg, msgs: published.append(msgs))
@@ -212,7 +237,9 @@ def test_main_mqtt_success_table_format(cli_env, monkeypatch, capsys):
     assert "Published 1 msg(s)" in out
 
 
-def test_main_mqtt_failure_exits_2(cli_env, monkeypatch, capsys):
+def test_main_mqtt_failure_exits_2(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "PASS"}], mqtt=MQTTConfig(host="broker"))
     monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
     monkeypatch.setattr(
@@ -229,7 +256,9 @@ def test_main_mqtt_failure_exits_2(cli_env, monkeypatch, capsys):
     assert "boom" in out
 
 
-def test_main_mqtt_failure_table_format(cli_env, monkeypatch, capsys):
+def test_main_mqtt_failure_table_format(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "PASS"}], mqtt=MQTTConfig(host="broker"))
     monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
     monkeypatch.setattr(
@@ -245,7 +274,9 @@ def test_main_mqtt_failure_table_format(cli_env, monkeypatch, capsys):
     assert "boom" in out
 
 
-def test_main_mqtt_failure_with_strict_violation_exits_1(cli_env, monkeypatch, capsys):
+def test_main_mqtt_failure_with_strict_violation_exits_1(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "FAIL"}], mqtt=MQTTConfig(host="broker"))
     monkeypatch.setattr("vlan_probe.cli.build_messages", lambda *a, **k: [("t", "{}")])
     monkeypatch.setattr(
@@ -258,12 +289,15 @@ def test_main_mqtt_failure_with_strict_violation_exits_1(cli_env, monkeypatch, c
     assert excinfo.value.code == 1
 
 
-def test_main_env_config_path(cli_env, monkeypatch, capsys):
-    loaded = []
+def test_main_env_config_path(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    loaded: List[str] = []
 
     def recording_load_config(path: str) -> Config:
         loaded.append(path)
-        return cli_env["config"]
+        cfg: Config = cli_env["config"]
+        return cfg
 
     cli_env["config"] = Config(targets=[])
     monkeypatch.setattr("vlan_probe.cli.load_config", recording_load_config)
@@ -273,7 +307,9 @@ def test_main_env_config_path(cli_env, monkeypatch, capsys):
     assert loaded == ["/env/config.toml"]
 
 
-def test_main_env_strict_default(cli_env, monkeypatch, capsys):
+def test_main_env_strict_default(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "FAIL"}])
     monkeypatch.setenv("VLAN_PROBE_STRICT", "1")
     _run_main(monkeypatch, ["-f", "json"])
@@ -282,7 +318,9 @@ def test_main_env_strict_default(cli_env, monkeypatch, capsys):
     assert excinfo.value.code == 1
 
 
-def test_main_env_format_default(cli_env, monkeypatch, capsys):
+def test_main_env_format_default(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "FAIL"}])
     monkeypatch.setenv("VLAN_PROBE_FORMAT", "json")
     _run_main(monkeypatch, [])
@@ -291,7 +329,9 @@ def test_main_env_format_default(cli_env, monkeypatch, capsys):
     assert summary["total_probed"] == 2
 
 
-def test_main_cli_flag_overrides_env(cli_env, monkeypatch, capsys):
+def test_main_cli_flag_overrides_env(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     cli_env["config"] = Config(targets=[{"name": "PASS"}])
     monkeypatch.setenv("VLAN_PROBE_FORMAT", "json")
     _run_main(monkeypatch, ["-f", "table"])

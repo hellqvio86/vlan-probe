@@ -23,7 +23,7 @@ Guidelines for AI agents (and contributors) working in this repository.
 
 ## Verification commands
 
-Run these locally before pushing:
+Run these locally before pushing (these checks are also enforced locally by the pre-commit hook in `.githooks/pre-commit`):
 
 ```bash
 uv sync                          # install dev dependencies
@@ -33,12 +33,21 @@ uv run mypy src
 uv run pytest
 ```
 
+Enable the pre-commit hook with:
+```bash
+git config core.hooksPath .githooks
+# or via make:
+make hooks
+```
+
 ## Code quality
 
 - **Typing is required.** Add type annotations to all function and method
   signatures (`mypy` runs with `disallow_untyped_defs = true`). Use precise
   types where they add clarity (e.g. `Optional`, `List[...]`), and `--cast`/
-  `Any` sparingly.
+  `Any` sparingly. Tests live in `src/test/` ("pytest is code") and are fully
+  type-checked: always run `uv run mypy src` to ensure both application code
+  and test functions/fixtures satisfy type checks.
 - **Use named (keyword) arguments** when calling functions, especially for
   non-obvious parameters, so calls stay readable.
 - **Every code path must be covered by a meaningful test.** `pytest` runs with

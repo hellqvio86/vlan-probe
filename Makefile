@@ -1,10 +1,14 @@
-.PHONY: venv lint test clean format build publish run install
+.PHONY: venv lint test clean format build publish run install hooks
 
 .venv: pyproject.toml
 	if [ ! -d .venv ]; then uv venv; fi
 	uv pip install -e . --group dev
 
-venv: .venv
+venv: .venv hooks
+
+hooks:
+	git config core.hooksPath .githooks
+	chmod +x .githooks/*
 
 lint: .venv
 	.venv/bin/ruff check .
