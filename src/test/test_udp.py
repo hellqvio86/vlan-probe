@@ -2,17 +2,20 @@
 
 import socket
 import threading
+from typing import Any
+
+import pytest
 
 from vlan_probe.probe import probe_target
 
 
-def _udp_echo_socket() -> "socket.socket":
+def _udp_echo_socket() -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("127.0.0.1", 0))
     return sock
 
 
-def _udp_echo_responder(sock: "socket.socket") -> threading.Thread:
+def _udp_echo_responder(sock: socket.socket) -> threading.Thread:
     def _respond() -> None:
         try:
             data, addr = sock.recvfrom(1024)
@@ -25,7 +28,7 @@ def _udp_echo_responder(sock: "socket.socket") -> threading.Thread:
     return thread
 
 
-def test_probe_udp_required_connectivity():
+def test_probe_udp_required_connectivity() -> None:
     """Probing an external UDP endpoint verifies the result structure."""
     target = {
         "name": "Required Service",
@@ -46,25 +49,26 @@ def test_probe_udp_required_connectivity():
     assert result["expected_blocked"] is False
 
 
-def test_probe_udp_dns_reachable(monkeypatch):
+def test_probe_udp_dns_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
     """A DNS probe sends a real DNS query packet to port 53."""
-    created: list = []
+    created: list[Any] = []
 
     class FakeUDPSocket:
-        def __init__(self, family, socktype):
+        def __init__(self, family: Any, socktype: Any) -> None:
             created.append(self)
             self.sent = b""
 
-        def settimeout(self, timeout):
+        def settimeout(self, timeout: float) -> None:
             pass
 
-        def sendto(self, data, addr):
+        def sendto(self, data: bytes, addr: Any) -> int:
             self.sent = data
+            return len(data)
 
-        def recvfrom(self, n):
+        def recvfrom(self, n: int) -> tuple[bytes, tuple[str, int]]:
             return b"dns-reply", ("127.0.0.1", 53)
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     monkeypatch.setattr("vlan_probe.probe.socket.socket", FakeUDPSocket)
@@ -84,7 +88,7 @@ def test_probe_udp_dns_reachable(monkeypatch):
     assert b"example" in query  # the queried name
 
 
-def test_probe_udp_other_port_reachable():
+def test_probe_udp_other_port_reachable() -> None:
     """A UDP endpoint on a non-DNS port that responds is reachable."""
     sock = _udp_echo_socket()
     port = sock.getsockname()[1]
@@ -107,7 +111,7 @@ def test_probe_udp_other_port_reachable():
         sock.close()
 
 
-def test_probe_udp_silent_endpoint_times_out():
+def test_probe_udp_silent_endpoint_times_out() -> None:
     """A UDP endpoint that never responds is unreachable (timeout)."""
     sock = _udp_echo_socket()  # bound but never responds
     port = sock.getsockname()[1]
@@ -127,7 +131,7 @@ def test_probe_udp_silent_endpoint_times_out():
         sock.close()
 
 
-def test_probe_udp_closed_port():
+def test_probe_udp_closed_port() -> None:
     """UDP to a closed port surfaces as an error and is unreachable."""
     sock = _udp_echo_socket()
     port = sock.getsockname()[1]
@@ -145,23 +149,23 @@ def test_probe_udp_closed_port():
     assert result["status"] == "PASS"
 
 
-def test_probe_udp_generic_error(monkeypatch):
+def test_probe_udp_generic_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """A non-timeout UDP error (e.g. connection reset) is treated as unreachable."""
 
     class FailingUDPSocket:
-        def __init__(self, family, socktype):
+        def __init__(self, family: Any, socktype: Any) -> None:
             pass
 
-        def settimeout(self, timeout):
+        def settimeout(self, timeout: float) -> None:
             pass
 
-        def sendto(self, data, addr):
-            pass
+        def sendto(self, data: bytes, addr: Any) -> int:
+            return 0
 
-        def recvfrom(self, n):
+        def recvfrom(self, n: int) -> tuple[bytes, tuple[str, int]]:
             raise ConnectionResetError("connection reset by peer")
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     monkeypatch.setattr("vlan_probe.probe.socket.socket", FailingUDPSocket)

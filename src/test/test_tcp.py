@@ -5,14 +5,14 @@ import socket
 from vlan_probe.probe import probe_target
 
 
-def _tcp_listener() -> "socket.socket":
+def _tcp_listener() -> socket.socket:
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(("127.0.0.1", 0))
     server.listen(1)
     return server
 
 
-def test_probe_tcp_unreachable():
+def test_probe_tcp_unreachable() -> None:
     """An unreachable target that must be blocked passes."""
     target = {
         "name": "Unreachable Host",
@@ -27,7 +27,7 @@ def test_probe_tcp_unreachable():
     assert result["reachable"] is False
 
 
-def test_probe_tcp_reachable_expected_open():
+def test_probe_tcp_reachable_expected_open() -> None:
     """A TCP endpoint that accepts connections and must be reachable passes."""
     server = _tcp_listener()
     port = server.getsockname()[1]
@@ -48,7 +48,7 @@ def test_probe_tcp_reachable_expected_open():
         server.close()
 
 
-def test_probe_tcp_reachable_expected_blocked():
+def test_probe_tcp_reachable_expected_blocked() -> None:
     """Reaching a target that must be blocked is reported as a violation."""
     server = _tcp_listener()
     port = server.getsockname()[1]
@@ -69,7 +69,7 @@ def test_probe_tcp_reachable_expected_blocked():
         server.close()
 
 
-def test_probe_tcp_closed_port_expected_open():
+def test_probe_tcp_closed_port_expected_open() -> None:
     """An unreachable endpoint that must be reachable fails with a clear error."""
     server = _tcp_listener()
     port = server.getsockname()[1]

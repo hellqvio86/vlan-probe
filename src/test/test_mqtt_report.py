@@ -1,7 +1,7 @@
 """Tests for vlan_probe.mqtt_report module."""
 
 import json
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import pytest
 
@@ -16,7 +16,7 @@ from vlan_probe.mqtt_report import (
 
 
 class FakeInfo:
-    def __init__(self, fail: bool = False):
+    def __init__(self, fail: bool = False) -> None:
         self._fail = fail
 
     def wait_for_publish(self, timeout: Optional[float] = None) -> None:
@@ -25,7 +25,7 @@ class FakeInfo:
 
 
 class FakeClient:
-    def __init__(self):
+    def __init__(self) -> None:
         self.published: List[Tuple[str, str, int, bool]] = []
         self.connected = False
         self.disconnected = False
@@ -36,50 +36,51 @@ class FakeClient:
         self.credentials: Optional[Tuple[str, Optional[str]]] = None
         self.connect_error: Optional[Exception] = None
         self.publish_error = False
+        self.connect_args: Tuple[str, int, int, dict[str, Any]] = ("", 0, 0, {})
 
-    def tls_set(self, ca_certs=None):
+    def tls_set(self, ca_certs: Optional[str] = None) -> None:
         self.tls_configured = True
 
-    def tls_insecure_set(self, value):
+    def tls_insecure_set(self, value: bool) -> None:
         self.tls_insecure = bool(value)
 
-    def username_pw_set(self, username, password=None):
+    def username_pw_set(self, username: str, password: Optional[str] = None) -> None:
         self.credentials = (username, password)
 
-    def connect(self, host, port, keepalive=60, **kwargs):
+    def connect(self, host: str, port: int, keepalive: int = 60, **kwargs: Any) -> None:
         if self.connect_error:
             raise self.connect_error
         self.connected = True
         self.connect_args = (host, port, keepalive, kwargs)
 
-    def loop_start(self):
+    def loop_start(self) -> None:
         self.loops_started += 1
 
-    def loop_stop(self):
+    def loop_stop(self) -> None:
         self.loops_stopped += 1
 
-    def publish(self, topic, payload, qos=0, retain=False):
+    def publish(self, topic: str, payload: str, qos: int = 0, retain: bool = False) -> FakeInfo:
         self.published.append((topic, payload, qos, retain))
         return FakeInfo(fail=self.publish_error)
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         self.disconnected = True
 
 
 @pytest.fixture
-def fake_client(monkeypatch):
+def fake_client(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
     client = FakeClient()
     monkeypatch.setattr("vlan_probe.mqtt_report.mqtt.Client", lambda *a, **k: client)
     return client
 
 
-def _cfg(**kwargs) -> MQTTConfig:
-    defaults = dict(host="mqtt.example.com")
+def _cfg(**kwargs: Any) -> MQTTConfig:
+    defaults: dict[str, Any] = dict(host="mqtt.example.com")
     defaults.update(kwargs)
     return MQTTConfig(**defaults)
 
 
-def test_slugify():
+def test_slugify() -> None:
     assert slugify("Internal - Device A SSH") == "internal-device-a-ssh"
     assert slugify("  Guest  VLAN  ") == "guest-vlan"
     assert slugify("DMZ.Web.Server") == "dmz-web-server"
@@ -88,12 +89,12 @@ def test_slugify():
     assert slugify("MixedCaseName") == "mixedcasename"
 
 
-def test_build_topic_prefix():
+def test_build_topic_prefix() -> None:
     assert build_topic_prefix("vlan-probe", "my-host") == "vlan-probe/my-host"
     assert build_topic_prefix("prefix", "Host With Spaces") == "prefix/host-with-spaces"
 
 
-def test_build_messages_layout():
+def test_build_messages_layout() -> None:
     results = [
         {"target_name": "Device A", "target_vlan": "Internal", "status": "PASS"},
         {"target_name": "Web Server", "target_vlan": "DMZ", "status": "FAIL"},
@@ -110,7 +111,7 @@ def test_build_messages_layout():
     assert json.loads(messages[1][1]) == results[0]
 
 
-def test_build_messages_collision():
+def test_build_messages_collision() -> None:
     results = [
         {"target_name": "Device A", "target_vlan": "Internal", "status": "PASS"},
         {"target_name": "Device.A", "target_vlan": "Internal", "status": "PASS"},
@@ -124,7 +125,7 @@ def test_build_messages_collision():
     assert suffix_seen[0].startswith("vlan-probe/host1/targets/internal/device-a-")
 
 
-def test_publish_success(fake_client):
+def test_publish_success(fake_client: FakeClient) -> None:
     cfg = _cfg(qos=1, retain=True)
     messages = [("a/summary", "{}"), ("a/targets/x/y", "{}")]
     publish_to_mqtt(cfg, messages)
@@ -140,7 +141,7 @@ def test_publish_success(fake_client):
     assert fake_client.connect_args[0] == "mqtt.example.com"
 
 
-def test_publish_with_auth_tls(fake_client):
+def test_publish_with_auth_tls(fake_client: FakeClient) -> None:
     cfg = _cfg(username="user", password="pw", tls=True, insecure=True)
     publish_to_mqtt(cfg, [("a/summary", "{}")])
 
@@ -149,14 +150,14 @@ def test_publish_with_auth_tls(fake_client):
     assert fake_client.credentials == ("user", "pw")
 
 
-def test_publish_connect_failure(fake_client):
+def test_publish_connect_failure(fake_client: FakeClient) -> None:
     fake_client.connect_error = ConnectionRefusedError("nope")
     with pytest.raises(MQTTPublishError):
         publish_to_mqtt(_cfg(), [("a/summary", "{}")])
     assert not fake_client.connected
 
 
-def test_publish_delivery_failure(fake_client):
+def test_publish_delivery_failure(fake_client: FakeClient) -> None:
     fake_client.publish_error = True
     with pytest.raises(MQTTPublishError):
         publish_to_mqtt(_cfg(), [("a/summary", "{}")])

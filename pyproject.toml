@@ -57,6 +57,6 @@ disallow_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["test"]
+testpaths = ["src/test"]
 python_files = "test_*.py"
 addopts = "-v --tb=short --cov=src/vlan_probe --cov-report=term-missing --cov-fail-under=100"

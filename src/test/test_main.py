@@ -7,7 +7,7 @@ import pytest
 
 
 @pytest.mark.parametrize("module", ["vlan_probe.cli", "vlan_probe.__main__"])
-def test_module_entrypoint(module, monkeypatch):
+def test_module_entrypoint(module: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """Running the modules as scripts invokes the CLI against a missing config."""
     monkeypatch.setattr(sys, "argv", ["vlan-probe", "-c", "/nonexistent/vlan_probe.toml"])
     with pytest.raises(SystemExit) as excinfo:
