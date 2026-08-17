@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+echo "==> Running git pre-commit checks..."
+
+# Ensure local user paths are available for uv / tools
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+if command -v uv >/dev/null 2>&1; then
+    RUN_CMD="uv run"
+elif [ -d ".venv" ]; then
+    RUN_CMD=".venv/bin"
+else
+    echo "Error: Neither 'uv' nor local '.venv' found. Please install uv." >&2
+    exit 1
+fi
+
+echo "--> Checking ruff lint..."
+$RUN_CMD ruff check .
+
+echo "--> Checking ruff format..."
+$RUN_CMD ruff format --check .
+
+echo "--> Checking mypy typing (src/)..."
+$RUN_CMD mypy src
+
+echo "--> Running pytest..."
+$RUN_CMD pytest
+
+echo "==> All pre-commit checks passed successfully!"
