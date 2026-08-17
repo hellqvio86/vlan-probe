@@ -335,7 +335,8 @@ supported way to work in this project.
 
 | Command           | What it does                                            |
 | ----------------- | ------------------------------------------------------- |
-| `make venv`       | create the virtualenv and install dev dependencies      |
+| `make venv`       | create the virtualenv, install dev deps, and set hooks  |
+| `make hooks`      | configure git pre-commit hook to enforce lint & tests   |
 | `make lint`       | ruff lint **and** format check                          |
 | `make format`     | auto-format the code with ruff                          |
 | `make test`       | mypy type-check + pytest with 100% coverage gate        |
@@ -346,9 +347,21 @@ supported way to work in this project.
 | `make clean`      | remove the venv and build/cache artifacts               |
 
 ```bash
-make venv    # one-time setup
+make venv    # one-time setup (also configures git hooks)
 make lint    # before pushing
 make test    # before pushing
+```
+
+### Git hooks 🪝
+
+A pre-commit hook is provided in `.githooks/pre-commit` to automatically run `ruff`, `mypy`, and `pytest` before every commit.
+
+To install / enable the hook:
+
+```bash
+make hooks
+# or directly with git:
+git config core.hooksPath .githooks
 ```
 
 ### Test coverage 🛡️
