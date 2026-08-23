@@ -26,8 +26,10 @@ def test_get_local_ips_ip_command_missing(monkeypatch: pytest.MonkeyPatch) -> No
     assert "127.0.0.1" in ips
 
 
-def test_get_local_ips_hostname_resolution_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Both fallback mechanisms failing yields loopback addresses."""
+def test_get_local_ips_hostname_resolution_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Both fallback mechanisms failing yields loopback addresses and emits a warning."""
 
     def raise_missing(*args: Any, **kwargs: Any) -> Any:
         raise FileNotFoundError("ip command not found")
@@ -38,6 +40,8 @@ def test_get_local_ips_hostname_resolution_fails(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr("vlan_probe.probe.subprocess.check_output", raise_missing)
     monkeypatch.setattr("vlan_probe.probe.socket.gethostbyname_ex", raise_socket_error)
     assert get_local_ips() == {"127.0.0.1", "::1"}
+    err = capsys.readouterr().err
+    assert "Warning: Failed to detect local network IP addresses" in err
 
 
 def test_get_local_ips_parses_ipv4_and_ipv6(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -114,3 +118,19 @@ def test_probe_target_unknown_protocol() -> None:
     result = probe_target(target, timeout=0.5, local_ips=set())
     assert result["reachable"] is False
     assert result["status"] == "PASS"
+
+
+def test_probe_target_unknown_protocol_expected_open() -> None:
+    """Unknown protocol with expected_blocked=False fails and reports unsupported protocol."""
+    target: dict[str, Any] = {
+        "name": "Unknown Proto",
+        "vlan": "Internal",
+        "ip": "192.0.2.1",
+        "port": 80,
+        "protocol": "custom_proto",
+        "expected_blocked": False,
+    }
+    result = probe_target(target, timeout=0.5, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Unsupported protocol 'custom_proto'" in str(result["error"])

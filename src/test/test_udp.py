@@ -251,3 +251,105 @@ def test_probe_udp_connection_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     result = probe_target(target, timeout=1.0, local_ips=set())
     assert result["reachable"] is False
     assert result["status"] == "PASS"
+
+
+def test_probe_udp_connection_refused_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ConnectionRefusedError on expected-open UDP reports ICMP Port Unreachable in error."""
+
+    class RefusedUDPSocket:
+        def __init__(self, family: Any, socktype: Any) -> None:
+            pass
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def sendto(self, data: bytes, addr: Any) -> int:
+            return 0
+
+        def recvfrom(self, n: int) -> tuple[bytes, tuple[str, int]]:
+            raise ConnectionRefusedError("port unreachable")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", RefusedUDPSocket)
+    target = {
+        "name": "Required UDP",
+        "vlan": "External",
+        "ip": "10.0.0.1",
+        "port": 1234,
+        "protocol": "udp",
+        "expected_blocked": False,
+    }
+    result = probe_target(target, timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Connection refused (ICMP Port Unreachable)" in str(result["error"])
+
+
+def test_probe_udp_timeout_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Timeout on expected-open UDP reports Timed out waiting for response in error."""
+
+    class TimeoutUDPSocket:
+        def __init__(self, family: Any, socktype: Any) -> None:
+            pass
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def sendto(self, data: bytes, addr: Any) -> int:
+            return 0
+
+        def recvfrom(self, n: int) -> tuple[bytes, tuple[str, int]]:
+            raise socket.timeout("timed out")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", TimeoutUDPSocket)
+    target = {
+        "name": "Silent Required UDP",
+        "vlan": "External",
+        "ip": "10.0.0.1",
+        "port": 1234,
+        "protocol": "udp",
+        "expected_blocked": False,
+    }
+    result = probe_target(target, timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Timed out waiting for response" in str(result["error"])
+
+
+def test_probe_udp_oserror_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OSError on expected-open UDP reports Socket error in error."""
+
+    class ErrorUDPSocket:
+        def __init__(self, family: Any, socktype: Any) -> None:
+            pass
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def sendto(self, data: bytes, addr: Any) -> int:
+            return 0
+
+        def recvfrom(self, n: int) -> tuple[bytes, tuple[str, int]]:
+            raise OSError("Network unreachable")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", ErrorUDPSocket)
+    target = {
+        "name": "Failing UDP",
+        "vlan": "External",
+        "ip": "10.0.0.1",
+        "port": 1234,
+        "protocol": "udp",
+        "expected_blocked": False,
+    }
+    result = probe_target(target, timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Socket error: Network unreachable" in str(result["error"])

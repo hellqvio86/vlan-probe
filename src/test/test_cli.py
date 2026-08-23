@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set
 
 import pytest
 
+from vlan_probe import __version__
 from vlan_probe.cli import (
     colorize,
     colorize_json_statuses,
@@ -120,7 +121,7 @@ def test_main_version(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFix
         main()
     assert excinfo.value.code == 0
     out = capsys.readouterr().out
-    assert "0.5.0" in out
+    assert __version__ in out
 
 
 def test_main_ndjson(

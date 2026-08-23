@@ -132,3 +132,84 @@ def test_probe_sctp_real_loopback() -> None:
         assert result["status"] == "PASS"
     finally:
         server.close()
+
+
+def test_probe_sctp_refused_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A refused SCTP association on expected open reports Connection refused."""
+
+    class RefusedSocket:
+        def __init__(self, family: Any, socktype: Any, proto: Any) -> None:
+            pass
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def connect(self, addr: Any) -> None:
+            raise ConnectionRefusedError("refused")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", RefusedSocket)
+    result = probe_target(_target(expected_blocked=False), timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Connection refused" in str(result["error"])
+
+
+def test_probe_sctp_timeout_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A timed-out SCTP association on expected open reports Connection timed out."""
+
+    class TimedOutSocket:
+        def __init__(self, family: Any, socktype: Any, proto: Any) -> None:
+            pass
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def connect(self, addr: Any) -> None:
+            raise socket.timeout("timed out")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", TimedOutSocket)
+    result = probe_target(_target(expected_blocked=False), timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Connection timed out" in str(result["error"])
+
+
+def test_probe_sctp_oserror_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An OSError during connect on expected open reports Socket error."""
+
+    class ErrorSocket:
+        def __init__(self, family: Any, socktype: Any, proto: Any) -> None:
+            pass
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def connect(self, addr: Any) -> None:
+            raise OSError("Network down")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", ErrorSocket)
+    result = probe_target(_target(expected_blocked=False), timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Socket error: Network down" in str(result["error"])
+
+
+def test_probe_sctp_not_supported_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A host without SCTP support reports SCTP protocol error on expected open."""
+    monkeypatch.setattr(
+        "vlan_probe.probe.socket.socket",
+        lambda *a, **k: (_ for _ in ()).throw(OSError(93, "Protocol not supported")),
+    )
+    result = probe_target(_target(expected_blocked=False), timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "SCTP protocol error: [Errno 93] Protocol not supported" in str(result["error"])
