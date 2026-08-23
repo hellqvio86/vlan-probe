@@ -14,10 +14,12 @@
 
 ## ✨ Features
 
-- **Multi-protocol probing** — `tcp`, `udp` (DNS-aware on port 53), `icmp`
-  (ping), and `sctp`.
+- **Multi-protocol probing** — `tcp`, `udp` (DNS-aware on port 53, NTP-aware on
+  port 123), `icmp` (ping), and `sctp`.
 - **Policy-first configuration** — declare what *should* be blocked vs.
   reachable; every deviation is reported as a violation 🔴.
+- **Concurrent execution** — multi-threaded worker pool (`-j` / `--concurrency`)
+  to probe dozens of targets simultaneously.
 - **Flexible output** — human-friendly `table`, structured `json`, or
   streaming `ndjson`.
 - **Alerting built-in** — `--strict` exit codes for automation, plus scheduled
@@ -90,9 +92,10 @@ vlan-probe -f json -s
 
 ## Configuration
 
-Configuration lives in a single [TOML](https://toml.io/) file — readable,
-diff-able, and easy to keep in git. By default it is read from
-`/etc/vlan_probe.toml`; use `-c <path>` for another location.
+Configuration lives in a single [TOML](https://toml.io/) file (or JSON file) —
+readable, diff-able, and easy to keep in git. By default it is read from
+`/etc/vlan_probe.toml` (or `/etc/vlan_probe.json`); use `-c <path>` for another
+location.
 
 ```toml
 [[targets]]
@@ -135,8 +138,15 @@ Each target declares the firewall policy it expects:
 | `true`             | **deny**      | target is *reachable* → violation 🔴                  |
 | `false`            | **allow**     | target is *unreachable* → failure 🔴                  |
 
-**Supported protocols:** `tcp` · `udp` (probed with a real DNS query on port
-53) · `icmp` (via `ping`) · `sctp`.
+**Supported protocols:** `tcp` · `udp` (probed with DNS query on port 53, NTP
+request on port 123, or null byte; ICMP port-unreachable is detected) · `icmp`
+(via `ping`) · `sctp`.
+
+> **Note on UDP probing:** UDP is connectionless. For DNS (port 53) and NTP
+> (port 123), `vlan-probe` sends valid protocol request packets and awaits
+> responses. For other UDP ports, it sends a probe byte and waits for a response
+> or an ICMP Port Unreachable message. Silent UDP endpoints that drop
+> unsolicited packets will time out.
 
 ### Environment variables
 
@@ -147,12 +157,13 @@ config file and makes containerized/systemd deployments trivial.
 
 **CLI defaults:**
 
-| Env var                | Controls                    | Default                |
-| ---------------------- | --------------------------- | ---------------------- |
-| `VLAN_PROBE_CONFIG`    | config file path            | `/etc/vlan_probe.toml` |
-| `VLAN_PROBE_TIMEOUT`   | probe timeout (seconds)     | `2.0`                  |
-| `VLAN_PROBE_FORMAT`    | output format               | `ndjson`               |
-| `VLAN_PROBE_STRICT`    | strict mode (exit 1)        | `false`                |
+| Env var                    | Controls                    | Default                |
+| -------------------------- | --------------------------- | ---------------------- |
+| `VLAN_PROBE_CONFIG`        | config file path            | `/etc/vlan_probe.toml` |
+| `VLAN_PROBE_TIMEOUT`       | probe timeout (seconds)     | `2.0`                  |
+| `VLAN_PROBE_FORMAT`        | output format               | `ndjson`               |
+| `VLAN_PROBE_STRICT`        | strict mode (exit 1)        | `false`                |
+| `VLAN_PROBE_CONCURRENCY`   | worker thread pool size     | `10`                   |
 
 **MQTT (`[mqtt]` section, overridable per-key):**
 
@@ -184,9 +195,11 @@ vlan-probe --mqtt
 ## Usage
 
 ```
--c, --config PATH         Path to config TOML file (default: /etc/vlan_probe.toml)
+-v, --version             Show program's version number and exit
+-c, --config PATH         Path to config TOML/JSON file (default: /etc/vlan_probe.toml)
 -f, --format FORMAT       Output format: ndjson, json, or table (default: ndjson)
 -t, --timeout SECONDS     Socket connection timeout (default: 2.0)
+-j, --concurrency INT     Number of concurrent worker threads (default: 10)
 -s, --strict              Exit with code 1 if any violations occur
 --mqtt                    Publish results to MQTT (requires [mqtt] section or VLAN_PROBE_MQTT_HOST)
 --color [auto|always|never]  Colorize output (default: auto)
@@ -199,8 +212,8 @@ vlan-probe -c ./vlan_probe.toml -f table
 # json output
 vlan-probe -f json
 
-# strict mode with a custom timeout
-vlan-probe -s -t 5.0
+# strict mode with a custom timeout and concurrency
+vlan-probe -s -t 5.0 -j 20
 
 # no color
 vlan-probe -f table --color never

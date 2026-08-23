@@ -21,11 +21,14 @@ DEFAULT_TOPIC_PREFIX = "vlan-probe"
 DEFAULT_TIMEOUT = 2.0
 DEFAULT_FORMAT = "ndjson"
 VALID_FORMATS = ("ndjson", "json", "table")
+DEFAULT_CONCURRENCY = 10
+SUPPORTED_PROTOCOLS = ("tcp", "udp", "icmp", "sctp")
 
 ENV_CONFIG_PATH = "VLAN_PROBE_CONFIG"
 ENV_TIMEOUT = "VLAN_PROBE_TIMEOUT"
 ENV_FORMAT = "VLAN_PROBE_FORMAT"
 ENV_STRICT = "VLAN_PROBE_STRICT"
+ENV_CONCURRENCY = "VLAN_PROBE_CONCURRENCY"
 
 ENV_MQTT_HOST = "VLAN_PROBE_MQTT_HOST"
 ENV_MQTT_PORT = "VLAN_PROBE_MQTT_PORT"
@@ -53,7 +56,7 @@ MQTT_ENV_VARS = (
     ENV_MQTT_CONNECT_TIMEOUT,
 )
 
-ALL_ENV_VARS = (ENV_CONFIG_PATH, ENV_TIMEOUT, ENV_FORMAT, ENV_STRICT) + MQTT_ENV_VARS
+ALL_ENV_VARS = (ENV_CONFIG_PATH, ENV_TIMEOUT, ENV_FORMAT, ENV_STRICT, ENV_CONCURRENCY) + MQTT_ENV_VARS
 
 _TRUE_VALUES = ("1", "true", "yes", "on")
 
@@ -93,6 +96,20 @@ def default_format() -> str:
 def default_strict() -> bool:
     """Return strict mode from ``VLAN_PROBE_STRICT`` or the default."""
     return _env_bool(os.environ.get(ENV_STRICT))
+
+
+def default_concurrency() -> int:
+    """Return the concurrency limit from ``VLAN_PROBE_CONCURRENCY`` or the default."""
+    raw = os.environ.get(ENV_CONCURRENCY)
+    if raw is None:
+        return DEFAULT_CONCURRENCY
+    try:
+        value = int(raw)
+    except ValueError:
+        _fail("'VLAN_PROBE_CONCURRENCY' must be a positive integer")
+    if value <= 0:
+        _fail("'VLAN_PROBE_CONCURRENCY' must be a positive integer")
+    return value
 
 
 @dataclass
@@ -225,6 +242,77 @@ def parse_mqtt_config(section: Any, env_overrides: Optional[Dict[str, Any]] = No
     )
 
 
+def validate_target(target: Any, index: int) -> Dict[str, Any]:
+    """Validate and normalize a single target dictionary."""
+    if not isinstance(target, dict):
+        _fail(f"Target at index {index} must be a table/dictionary")
+
+    ip = target.get("ip")
+    if not isinstance(ip, str) or not ip.strip():
+        _fail(f"Target at index {index} is missing required 'ip' field")
+    ip = ip.strip()
+
+    protocol_raw = target.get("protocol", "tcp")
+    if not isinstance(protocol_raw, str) or protocol_raw.lower() not in SUPPORTED_PROTOCOLS:
+        _fail(
+            f"Target at index {index} has unsupported protocol '{protocol_raw}'. "
+            f"Supported protocols: {', '.join(SUPPORTED_PROTOCOLS)}"
+        )
+    protocol = protocol_raw.lower()
+
+    port_raw = target.get("port")
+    if protocol == "icmp":
+        if port_raw is None:
+            port = 0
+        else:
+            try:
+                port = int(port_raw)
+            except (ValueError, TypeError):
+                _fail(
+                    f"Target at index {index} has invalid ICMP port '{port_raw}'. "
+                    "Must be an integer between 0 and 65535"
+                )
+            if not (0 <= port <= 65535):
+                _fail(f"Target at index {index} has invalid ICMP port '{port}'. Must be between 0 and 65535")
+    else:
+        if port_raw is None:
+            port = 80
+        else:
+            try:
+                port = int(port_raw)
+            except (ValueError, TypeError):
+                _fail(f"Target at index {index} has invalid port '{port_raw}'. Must be an integer between 1 and 65535")
+            if not (1 <= port <= 65535):
+                _fail(f"Target at index {index} has invalid port '{port}'. Must be between 1 and 65535")
+
+    name = str(target.get("name", "Unknown Target"))
+    vlan = str(target.get("vlan", "Unknown VLAN"))
+    expected_blocked = _boolish(target.get("expected_blocked", True))
+
+    return {
+        "name": name,
+        "vlan": vlan,
+        "ip": ip,
+        "port": port,
+        "protocol": protocol,
+        "expected_blocked": expected_blocked,
+    }
+
+
+def _warn_insecure_permissions(config_path: str) -> None:
+    """Warn if config file contains MQTT credentials but is accessible by others."""
+    try:
+        if hasattr(os, "stat"):
+            mode = os.stat(config_path).st_mode
+            if mode & 0o077:
+                sys.stderr.write(
+                    f"Warning: Config file '{config_path}' contains MQTT credentials but has open permissions. "
+                    f"Consider running: chmod 600 {config_path}\n"
+                )
+    except Exception:
+        pass
+
+
 def load_config(config_path: str) -> Config:
     """
     Load and parse configuration file.
@@ -241,7 +329,7 @@ def load_config(config_path: str) -> Config:
         SystemExit: On configuration loading or parsing errors
     """
     try:
-        if config_path.endswith(".toml"):
+        if config_path.endswith(".toml") or config_path.endswith(".toml.example"):
             if tomllib is None:
                 _fail("TOML support requires 'tomli' package for Python < 3.11. Install with: pip install tomli")
             with open(config_path, "rb") as f:
@@ -268,9 +356,13 @@ def load_config(config_path: str) -> Config:
     if not isinstance(targets, list):
         _fail("'targets' in config must be a list")
 
-    mqtt = _build_mqtt_config(mqtt_section)
+    validated_targets = [validate_target(target=t, index=idx) for idx, t in enumerate(targets)]
 
-    return Config(targets=targets, mqtt=mqtt)
+    mqtt = _build_mqtt_config(mqtt_section)
+    if mqtt is not None and mqtt.password:
+        _warn_insecure_permissions(config_path)
+
+    return Config(targets=validated_targets, mqtt=mqtt)
 
 
 def _build_mqtt_config(mqtt_section: Any) -> Optional[MQTTConfig]:
