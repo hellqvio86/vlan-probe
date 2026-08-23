@@ -103,3 +103,36 @@ def test_probe_icmp_real_loopback() -> None:
     result = probe_target(target, timeout=2.0, local_ips=set())
     assert result["reachable"] is True
     assert result["status"] == "PASS"
+
+
+def test_probe_icmp_unreachable_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-zero ping return code on expected open reports no ICMP reply."""
+    monkeypatch.setattr("vlan_probe.probe.subprocess.run", _fake_run(returncode=1))
+    result = probe_target(_target(expected_blocked=False), timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Ping failed (no ICMP reply received)" in str(result["error"])
+
+
+def test_probe_icmp_timeout_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TimeoutExpired on expected open reports ping timed out."""
+    monkeypatch.setattr(
+        "vlan_probe.probe.subprocess.run",
+        lambda *a, **k: (_ for _ in ()).throw(subprocess.TimeoutExpired("ping", 2.0)),
+    )
+    result = probe_target(_target(expected_blocked=False), timeout=2.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Ping timed out" in str(result["error"])
+
+
+def test_probe_icmp_error_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OSError on expected open reports ping execution error."""
+    monkeypatch.setattr(
+        "vlan_probe.probe.subprocess.run",
+        lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError("ping not found")),
+    )
+    result = probe_target(_target(expected_blocked=False), timeout=2.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Ping execution error: ping not found" in str(result["error"])

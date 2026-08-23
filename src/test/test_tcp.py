@@ -2,6 +2,8 @@
 
 import socket
 
+import pytest
+
 from vlan_probe.probe import probe_target
 
 
@@ -88,3 +90,66 @@ def test_probe_tcp_closed_port_expected_open() -> None:
     assert result["status"] == "FAIL"
     assert isinstance(result["error"], str)
     assert "EXPECTED_CONNECTIVITY_FAILED" in result["error"]
+    assert "Connection refused" in result["error"]
+
+
+def test_probe_tcp_timeout_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A timed-out TCP connection reports Connection timed out in error details."""
+
+    class TimedOutSocket:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def connect(self, addr: object) -> None:
+            raise socket.timeout("timed out")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", TimedOutSocket)
+    target = {
+        "name": "Slow Service",
+        "vlan": "Internet",
+        "ip": "192.0.2.1",
+        "port": 80,
+        "protocol": "tcp",
+        "expected_blocked": False,
+    }
+    result = probe_target(target, timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Connection timed out" in str(result["error"])
+
+
+def test_probe_tcp_oserror_expected_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An OS error in TCP connect reports Socket error in error details."""
+
+    class ErrorSocket:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def connect(self, addr: object) -> None:
+            raise OSError("Network unreachable")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", ErrorSocket)
+    target = {
+        "name": "Unreachable Network",
+        "vlan": "Internet",
+        "ip": "192.0.2.1",
+        "port": 80,
+        "protocol": "tcp",
+        "expected_blocked": False,
+    }
+    result = probe_target(target, timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "FAIL"
+    assert "Socket error: Network unreachable" in str(result["error"])

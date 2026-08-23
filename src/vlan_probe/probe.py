@@ -3,6 +3,7 @@
 import datetime
 import socket
 import subprocess
+import sys
 import time
 from typing import Dict, Optional, Set
 
@@ -14,6 +15,7 @@ _SCTP_PROTO = getattr(socket, "IPPROTO_SCTP", 132)
 def get_local_ips() -> Set[str]:
     """Get all local IP addresses on this host."""
     ips: Set[str] = {"127.0.0.1", "::1"}
+    detected = False
     try:
         out = subprocess.check_output(["ip", "-o", "addr", "show"], text=True, timeout=2)
         for line in out.splitlines():
@@ -22,13 +24,24 @@ def get_local_ips() -> Set[str]:
                 ip = parts[3].split("/")[0]
                 ip = ip.split("%")[0]
                 ips.add(ip)
+                detected = True
     except Exception:
+        pass
+
+    if not detected:
         try:
             hostname = socket.gethostname()
             for ip in socket.gethostbyname_ex(hostname)[2]:
                 ips.add(ip)
+                detected = True
         except Exception:
             pass
+
+    if not detected:
+        sys.stderr.write(
+            "Warning: Failed to detect local network IP addresses; only loopback addresses will be exempted.\n"
+        )
+
     return ips
 
 
@@ -61,6 +74,7 @@ def probe_target(
 
     start_time = time.time()
     reachable = False
+    failure_reason: Optional[str] = None
 
     if protocol == "tcp":
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -69,8 +83,15 @@ def probe_target(
             sock.connect((ip, port))
             reachable = True
             sock.close()
-        except (socket.timeout, ConnectionRefusedError, OSError):
+        except socket.timeout:
             reachable = False
+            failure_reason = "Connection timed out"
+        except ConnectionRefusedError:
+            reachable = False
+            failure_reason = "Connection refused"
+        except OSError as e:
+            reachable = False
+            failure_reason = f"Socket error: {e}"
     elif protocol == "udp":
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(timeout)
@@ -85,8 +106,15 @@ def probe_target(
                 sock.sendto(b"\x00", (ip, port))
             sock.recvfrom(1024)
             reachable = True
-        except (socket.timeout, ConnectionRefusedError, OSError):
+        except ConnectionRefusedError:
             reachable = False
+            failure_reason = "Connection refused (ICMP Port Unreachable)"
+        except socket.timeout:
+            reachable = False
+            failure_reason = "Timed out waiting for response"
+        except OSError as e:
+            reachable = False
+            failure_reason = f"Socket error: {e}"
         finally:
             sock.close()
     elif protocol == "icmp":
@@ -99,8 +127,14 @@ def probe_target(
                 timeout=timeout + 1,
             )
             reachable = completed.returncode == 0
-        except (OSError, subprocess.TimeoutExpired):
+            if not reachable:
+                failure_reason = "Ping failed (no ICMP reply received)"
+        except subprocess.TimeoutExpired:
             reachable = False
+            failure_reason = "Ping timed out"
+        except OSError as e:
+            reachable = False
+            failure_reason = f"Ping execution error: {e}"
     elif protocol == "sctp":
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, _SCTP_PROTO)
@@ -108,14 +142,23 @@ def probe_target(
             try:
                 sock.connect((ip, port))
                 reachable = True
-            except (socket.timeout, ConnectionRefusedError, OSError):
+            except socket.timeout:
                 reachable = False
+                failure_reason = "Connection timed out"
+            except ConnectionRefusedError:
+                reachable = False
+                failure_reason = "Connection refused"
+            except OSError as e:
+                reachable = False
+                failure_reason = f"Socket error: {e}"
             finally:
                 sock.close()
-        except OSError:
+        except OSError as e:
             reachable = False
+            failure_reason = f"SCTP protocol error: {e}"
     else:
         reachable = False
+        failure_reason = f"Unsupported protocol '{protocol}'"
 
     latency_ms = round((time.time() - start_time) * 1000, 2)
 
@@ -138,7 +181,8 @@ def probe_target(
         passed = reachable
         status = "PASS" if passed else "FAIL"
         if not passed:
-            error_details = f"EXPECTED_CONNECTIVITY_FAILED: Failed to connect to {name} ({ip}:{port})"
+            reason_suffix = f" - {failure_reason}" if failure_reason else ""
+            error_details = f"EXPECTED_CONNECTIVITY_FAILED: Failed to connect to {name} ({ip}:{port}){reason_suffix}"
         else:
             error_details = None
 
