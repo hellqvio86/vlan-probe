@@ -5,8 +5,18 @@ import datetime
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
-from .config import VALID_FORMATS, default_config_path, default_format, default_strict, default_timeout, load_config
+from . import __version__
+from .config import (
+    VALID_FORMATS,
+    default_concurrency,
+    default_config_path,
+    default_format,
+    default_strict,
+    default_timeout,
+    load_config,
+)
 from .mqtt_report import MQTTPublishError, build_messages, publish_to_mqtt
 from .probe import get_local_ips, probe_target
 
@@ -48,13 +58,15 @@ def colorize_json_statuses(line: str, color: bool) -> str:
         return line
     line = line.replace('"status": "PASS"', f'"status": "{colorize("PASS", "green")}"')
     line = line.replace('"status": "FAIL"', f'"status": "{colorize("FAIL", "red")}"')
+    line = line.replace('"status": "SKIP"', f'"status": "{colorize("SKIP", "yellow")}"')
     return line
 
 
 def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Probe VLAN network access and verify isolation permissions.")
-    parser.add_argument("-c", "--config", default=default_config_path(), help="Path to config TOML file")
+    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-c", "--config", default=default_config_path(), help="Path to config TOML/JSON file")
     parser.add_argument(
         "-f",
         "--format",
@@ -68,6 +80,13 @@ def main() -> None:
         type=float,
         default=default_timeout(),
         help="Socket connection timeout in seconds",
+    )
+    parser.add_argument(
+        "-j",
+        "--concurrency",
+        type=int,
+        default=default_concurrency(),
+        help="Number of concurrent worker threads (default: 10)",
     )
     parser.add_argument(
         "-s",
@@ -97,21 +116,26 @@ def main() -> None:
         sys.stderr.write("Error: --mqtt requires a [mqtt] section in the config file\n")
         sys.exit(2)
 
-    results = []
-    violations = []
     local_ips = get_local_ips()
+    max_workers = max(1, args.concurrency)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(
+            executor.map(
+                lambda target: probe_target(target, timeout=args.timeout, local_ips=local_ips),
+                targets,
+            )
+        )
 
-    for target in targets:
-        res = probe_target(target, timeout=args.timeout, local_ips=local_ips)
-        results.append(res)
-        if res["status"] == "FAIL":
-            violations.append(res)
+    violations = [r for r in results if r["status"] == "FAIL"]
+    skipped = [r for r in results if r["status"] == "SKIP"]
+    passed = [r for r in results if r["status"] == "PASS"]
 
     summary = {
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "total_probed": len(results),
-        "passed": len(results) - len(violations),
+        "passed": len(passed),
         "failed": len(violations),
+        "skipped": len(skipped),
         "violations": [
             {
                 "vlan": v["target_vlan"],
@@ -163,40 +187,68 @@ def main() -> None:
         print(colorize_json_statuses(json.dumps(summary, indent=2), color))
 
     elif args.format == "table":
+        all_rows = list(results)
+        if mqtt_res:
+            all_rows.append(mqtt_res)
+
+        vlan_w = max(12, max((len(str(r["target_vlan"])) for r in all_rows), default=12))
+        name_w = max(30, max((len(str(r["target_name"])) for r in all_rows), default=30))
+        ep_w = max(22, max((len(f"{r['target_ip']}:{r['port']} ({r['protocol']})") for r in all_rows), default=22))
+        divider_len = vlan_w + name_w + ep_w + 8 + 15 + 4
+
         if color:
             header = (
-                f"{colorize('VLAN', 'cyan'):<12} "
-                f"{colorize('TARGET', 'cyan'):<30} "
-                f"{colorize('ENDPOINT', 'cyan'):<22} "
-                f"{colorize('STATUS', 'cyan'):<8} "
+                f"{colorize('VLAN'.ljust(vlan_w), 'cyan')} "
+                f"{colorize('TARGET'.ljust(name_w), 'cyan')} "
+                f"{colorize('ENDPOINT'.ljust(ep_w), 'cyan')} "
+                f"{colorize('STATUS'.ljust(8), 'cyan')} "
                 f"{colorize('DETAILS', 'cyan')}"
             )
-            divider = colorize("-" * 90, "cyan")
+            divider = colorize("-" * divider_len, "cyan")
         else:
-            header = f"{'VLAN':<12} {'TARGET':<30} {'ENDPOINT':<22} {'STATUS':<8} {'DETAILS'}"
-            divider = "-" * 90
+            header = f"{'VLAN':<{vlan_w}} {'TARGET':<{name_w}} {'ENDPOINT':<{ep_w}} {'STATUS':<8} {'DETAILS'}"
+            divider = "-" * divider_len
         print(header)
         print(divider)
         for r in results:
             endpoint = f"{r['target_ip']}:{r['port']} ({r['protocol']})"
             details = r["error"] if r["error"] else "OK"
-            status = r["status"]
+            status = str(r["status"])
+            status_text = f"{status:<8}"
             if color:
-                status_color = "red" if status == "FAIL" else "green"
-                details_color = "red" if status == "FAIL" else "green"
-                status = colorize(str(status), status_color)
-                details = colorize(str(details), details_color)
-            print(f"{r['target_vlan']:<12} {r['target_name']:<30} {endpoint:<22} {status:<8} {details}")
+                if status == "FAIL":
+                    status_disp = colorize(status_text, "red")
+                    details_disp = colorize(str(details), "red")
+                elif status == "SKIP":
+                    status_disp = colorize(status_text, "yellow")
+                    details_disp = colorize(str(details), "yellow")
+                else:
+                    status_disp = colorize(status_text, "green")
+                    details_disp = colorize(str(details), "green")
+            else:
+                status_disp = status_text
+                details_disp = str(details)
+            vlan_str = f"{r['target_vlan']:<{vlan_w}}"
+            name_str = f"{r['target_name']:<{name_w}}"
+            ep_str = f"{endpoint:<{ep_w}}"
+            print(f"{vlan_str} {name_str} {ep_str} {status_disp} {details_disp}")
         if mqtt_res:
             endpoint = f"{mqtt_res['target_ip']}:{mqtt_res['port']} ({mqtt_res['protocol']})"
             details = mqtt_res["error"] if mqtt_res["error"] else f"Published {mqtt_res['published']} msg(s)"
-            status = mqtt_res["status"]
+            status = str(mqtt_res["status"])
+            status_text = f"{status:<8}"
             if color:
                 status_color = "red" if status == "FAIL" else "green"
                 details_color = "red" if status == "FAIL" else "green"
-                status = colorize(str(status), status_color)
-                details = colorize(str(details), details_color)
-            print(f"{mqtt_res['target_vlan']:<12} {mqtt_res['target_name']:<30} {endpoint:<22} {status:<8} {details}")
+                status_disp = colorize(status_text, status_color)
+                details_disp = colorize(str(details), details_color)
+            else:
+                status_disp = status_text
+                details_disp = str(details)
+            mvlan_str = f"{mqtt_res['target_vlan']:<{vlan_w}}"
+            mname_str = f"{mqtt_res['target_name']:<{name_w}}"
+            mep_str = f"{endpoint:<{ep_w}}"
+            print(f"{mvlan_str} {mname_str} {mep_str} {status_disp} {details_disp}")
 
     if args.strict and violations:
         head = f"{len(violations)} unauthorized connection(s) detected!"

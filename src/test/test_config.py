@@ -6,16 +6,19 @@ from typing import Any
 import pytest
 
 from vlan_probe.config import (
+    DEFAULT_CONCURRENCY,
     DEFAULT_CONFIG_PATH,
     DEFAULT_FORMAT,
     DEFAULT_TIMEOUT,
     MQTTConfig,
+    default_concurrency,
     default_config_path,
     default_format,
     default_strict,
     default_timeout,
     load_config,
     parse_mqtt_config,
+    validate_target,
 )
 
 
@@ -96,6 +99,13 @@ def test_load_config_without_mqtt(tmp_path: Path) -> None:
     config_file.write_text('[[targets]]\nname = "A"\nvlan = "V"\nip = "10.0.0.1"\nport = 1\nprotocol = "tcp"\n')
     cfg = load_config(str(config_file))
     assert cfg.mqtt is None
+
+
+def test_load_config_toml_example(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.toml.example"
+    config_file.write_text('[[targets]]\nname = "A"\nvlan = "V"\nip = "10.0.0.1"\nport = 1\nprotocol = "tcp"\n')
+    cfg = load_config(str(config_file))
+    assert len(cfg.targets) == 1
 
 
 def test_load_config_missing_file(tmp_path: Path) -> None:
@@ -295,3 +305,125 @@ def test_load_config_invalid_mqtt_env(tmp_path: Path, monkeypatch: pytest.Monkey
     with pytest.raises(SystemExit) as excinfo:
         load_config(str(config_file))
     assert excinfo.value.code == 2
+
+
+def test_default_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VLAN_PROBE_CONCURRENCY", raising=False)
+    assert default_concurrency() == DEFAULT_CONCURRENCY
+    monkeypatch.setenv("VLAN_PROBE_CONCURRENCY", "20")
+    assert default_concurrency() == 20
+
+
+@pytest.mark.parametrize("value", ["abc", "0", "-5"])
+def test_default_concurrency_invalid(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("VLAN_PROBE_CONCURRENCY", value)
+    with pytest.raises(SystemExit) as excinfo:
+        default_concurrency()
+    assert excinfo.value.code == 2
+
+
+def test_validate_target_valid() -> None:
+    target = {
+        "name": "Server",
+        "vlan": "Prod",
+        "ip": " 10.0.0.1 ",
+        "port": 443,
+        "protocol": "TCP",
+        "expected_blocked": False,
+    }
+    validated = validate_target(target, 0)
+    assert validated == {
+        "name": "Server",
+        "vlan": "Prod",
+        "ip": "10.0.0.1",
+        "port": 443,
+        "protocol": "tcp",
+        "expected_blocked": False,
+    }
+
+
+def test_validate_target_defaults() -> None:
+    target = {"ip": "10.0.0.1"}
+    validated = validate_target(target, 0)
+    assert validated == {
+        "name": "Unknown Target",
+        "vlan": "Unknown VLAN",
+        "ip": "10.0.0.1",
+        "port": 80,
+        "protocol": "tcp",
+        "expected_blocked": True,
+    }
+
+
+def test_validate_target_icmp_default_port() -> None:
+    target = {"ip": "10.0.0.1", "protocol": "icmp"}
+    validated = validate_target(target, 0)
+    assert validated["port"] == 0
+    assert validated["protocol"] == "icmp"
+
+
+def test_validate_target_icmp_custom_port() -> None:
+    target = {"ip": "10.0.0.1", "protocol": "icmp", "port": 0}
+    validated = validate_target(target, 0)
+    assert validated["port"] == 0
+
+
+@pytest.mark.parametrize(
+    "invalid_target",
+    [
+        "not a dict",
+        [],
+        {"vlan": "Prod"},  # missing ip
+        {"ip": ""},  # empty ip
+        {"ip": "   "},  # whitespace ip
+        {"ip": "10.0.0.1", "protocol": "unknown"},  # unsupported protocol
+        {"ip": "10.0.0.1", "port": "not-int"},  # invalid port string
+        {"ip": "10.0.0.1", "port": 0},  # port 0 for tcp
+        {"ip": "10.0.0.1", "port": 70000},  # port > 65535
+        {"ip": "10.0.0.1", "protocol": "icmp", "port": "not-int"},  # invalid icmp port string
+        {"ip": "10.0.0.1", "protocol": "icmp", "port": -1},  # negative icmp port
+        {"ip": "10.0.0.1", "protocol": "icmp", "port": 70000},  # icmp port > 65535
+    ],
+)
+def test_validate_target_invalid(invalid_target: Any) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        validate_target(invalid_target, 0)
+    assert excinfo.value.code == 2
+
+
+def test_load_config_insecure_permissions_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[[targets]]\nip = "10.0.0.1"\n\n[mqtt]\nhost = "broker"\npassword = "secret"\n')
+    # Ensure open permissions
+    config_file.chmod(0o666)
+    cfg = load_config(str(config_file))
+    assert cfg.mqtt is not None
+    err = capsys.readouterr().err
+    assert "Warning: Config file" in err
+    assert "chmod 600" in err
+
+
+def test_load_config_secure_permissions_no_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[[targets]]\nip = "10.0.0.1"\n\n[mqtt]\nhost = "broker"\npassword = "secret"\n')
+    config_file.chmod(0o600)
+    cfg = load_config(str(config_file))
+    assert cfg.mqtt is not None
+    err = capsys.readouterr().err
+    assert "Warning: Config file" not in err
+
+
+def test_load_config_permissions_stat_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[[targets]]\nip = "10.0.0.1"\n\n[mqtt]\nhost = "broker"\npassword = "secret"\n')
+    monkeypatch.setattr("vlan_probe.config.os.stat", lambda *a, **k: (_ for _ in ()).throw(OSError("cannot stat")))
+    cfg = load_config(str(config_file))
+    assert cfg.mqtt is not None
+    err = capsys.readouterr().err
+    assert "Warning: Config file" not in err

@@ -180,3 +180,74 @@ def test_probe_udp_generic_error(monkeypatch: pytest.MonkeyPatch) -> None:
     result = probe_target(target, timeout=1.0, local_ips=set())
     assert result["reachable"] is False
     assert result["status"] == "PASS"
+
+
+def test_probe_udp_ntp_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An NTP probe sends a client request packet to port 123."""
+    created: list[Any] = []
+
+    class FakeUDPSocket:
+        def __init__(self, family: Any, socktype: Any) -> None:
+            created.append(self)
+            self.sent = b""
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def sendto(self, data: bytes, addr: Any) -> int:
+            self.sent = data
+            return len(data)
+
+        def recvfrom(self, n: int) -> tuple[bytes, tuple[str, int]]:
+            return b"ntp-reply", ("127.0.0.1", 123)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", FakeUDPSocket)
+    target = {
+        "name": "NTP",
+        "vlan": "External",
+        "ip": "127.0.0.1",
+        "port": 123,
+        "protocol": "udp",
+        "expected_blocked": False,
+    }
+    result = probe_target(target, timeout=2.0, local_ips=set())
+    assert result["reachable"] is True
+    assert result["status"] == "PASS"
+    query = created[0].sent
+    assert query == b"\x1b" + 47 * b"\x00"
+
+
+def test_probe_udp_connection_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ConnectionRefusedError (ICMP Port Unreachable) is handled as unreachable."""
+
+    class RefusedUDPSocket:
+        def __init__(self, family: Any, socktype: Any) -> None:
+            pass
+
+        def settimeout(self, timeout: float) -> None:
+            pass
+
+        def sendto(self, data: bytes, addr: Any) -> int:
+            return 0
+
+        def recvfrom(self, n: int) -> tuple[bytes, tuple[str, int]]:
+            raise ConnectionRefusedError("port unreachable")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("vlan_probe.probe.socket.socket", RefusedUDPSocket)
+    target = {
+        "name": "Refused UDP",
+        "vlan": "Internal",
+        "ip": "10.0.0.1",
+        "port": 1234,
+        "protocol": "udp",
+        "expected_blocked": True,
+    }
+    result = probe_target(target, timeout=1.0, local_ips=set())
+    assert result["reachable"] is False
+    assert result["status"] == "PASS"

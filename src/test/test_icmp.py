@@ -29,6 +29,16 @@ def _fake_run(returncode: int) -> Any:
     return fake_run
 
 
+def _ping_available() -> bool:
+    if shutil.which("ping") is None:
+        return False
+    try:
+        res = subprocess.run(["ping", "-c", "1", "-W", "1", "127.0.0.1"], capture_output=True, timeout=1.0)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
 def test_probe_icmp_builds_ping_command(monkeypatch: pytest.MonkeyPatch) -> None:
     """The ping subprocess is invoked with a single probe and bounded timeout."""
     captured: dict[str, Any] = {}
@@ -40,7 +50,7 @@ def test_probe_icmp_builds_ping_command(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr("vlan_probe.probe.subprocess.run", fake_run)
     result = probe_target(_target(ip="10.0.0.1", expected_blocked=False), timeout=2.0, local_ips=set())
-    assert captured["args"] == ["ping", "-c", "1", "-W", "2.0", "10.0.0.1"]
+    assert captured["args"] == ["ping", "-c", "1", "-W", "2", "10.0.0.1"]
     assert captured["timeout"] == 3.0
     assert result["reachable"] is True
     assert result["status"] == "PASS"
@@ -86,7 +96,7 @@ def test_probe_icmp_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["status"] == "PASS"
 
 
-@pytest.mark.skipif(shutil.which("ping") is None, reason="ping binary not available")
+@pytest.mark.skipif(not _ping_available(), reason="ping binary or capability not available")
 def test_probe_icmp_real_loopback() -> None:
     """Pinging the loopback interface is reported as reachable."""
     target = _target(ip="127.0.0.1", expected_blocked=False)

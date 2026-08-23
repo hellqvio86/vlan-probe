@@ -37,6 +37,12 @@ FAIL_RESULT: Dict[str, object] = {
     "error": "UNAUTHORIZED_CONNECTIVITY_VIOLATION: bad",
 }
 
+SKIP_RESULT: Dict[str, object] = {
+    **PASS_RESULT,
+    "status": "SKIP",
+    "error": "EXEMPT_SELF_HOST: Target is local interface",
+}
+
 
 @pytest.fixture
 def cli_env(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
@@ -58,6 +64,8 @@ def cli_env(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
         name = str(target.get("name"))
         if name == "FAIL":
             return FAIL_RESULT
+        if name == "SKIP":
+            return SKIP_RESULT
         return PASS_RESULT
 
     monkeypatch.setattr("vlan_probe.cli.load_config", fake_load_config)
@@ -100,9 +108,19 @@ def test_resolve_color_mode() -> None:
 def test_colorize_json_statuses() -> None:
     line = '"status": "PASS"'
     assert colorize_json_statuses(line, False) == line
-    colored = colorize_json_statuses('{"status": "PASS", "status": "FAIL"}', True)
+    colored = colorize_json_statuses('{"status": "PASS", "status": "FAIL", "status": "SKIP"}', True)
     assert "\033[32mPASS\033[0m" in colored
     assert "\033[31mFAIL\033[0m" in colored
+    assert "\033[33mSKIP\033[0m" in colored
+
+
+def test_main_version(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _run_main(monkeypatch, ["--version"])
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "0.5.0" in out
 
 
 def test_main_ndjson(
@@ -121,15 +139,16 @@ def test_main_ndjson(
 def test_main_json(
     cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "FAIL"}])
+    cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "FAIL"}, {"name": "SKIP"}])
     _run_main(monkeypatch, ["-f", "json"])
     main()
     summary = json.loads(capsys.readouterr().out)
-    assert summary["total_probed"] == 2
+    assert summary["total_probed"] == 3
     assert summary["passed"] == 1
     assert summary["failed"] == 1
+    assert summary["skipped"] == 1
     assert summary["violations"][0]["target"] == "Device A"
-    assert len(summary["results"]) == 2
+    assert len(summary["results"]) == 3
 
 
 def test_main_table(
@@ -339,3 +358,28 @@ def test_main_cli_flag_overrides_env(
     out = capsys.readouterr().out
     assert "VLAN" in out
     assert not out.strip().startswith("{")
+
+
+def test_main_concurrency_flag(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "PASS"}])
+    _run_main(monkeypatch, ["-j", "4", "-f", "ndjson"])
+    main()
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 2
+
+
+def test_main_table_with_skip(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cli_env["config"] = Config(targets=[{"name": "SKIP"}])
+    _run_main(monkeypatch, ["-f", "table", "--color", "always"])
+    main()
+    out = capsys.readouterr().out
+    assert "\033[33mSKIP" in out
+
+    _run_main(monkeypatch, ["-f", "table", "--color", "never"])
+    main()
+    out_plain = capsys.readouterr().out
+    assert "SKIP" in out_plain

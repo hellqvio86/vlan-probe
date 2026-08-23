@@ -72,13 +72,11 @@ def publish_to_mqtt(mqtt_config: MQTTConfig, messages: List[Message]) -> None:
             client.tls_insecure_set(True)
     if mqtt_config.username:
         client.username_pw_set(mqtt_config.username, mqtt_config.password)
-    socket.setdefaulttimeout(mqtt_config.connect_timeout)
+    client.connect_timeout = mqtt_config.connect_timeout
     try:
         client.connect(mqtt_config.host, mqtt_config.port, keepalive=60)
     except Exception as e:
         raise MQTTPublishError(f"MQTT connect to {mqtt_config.host}:{mqtt_config.port} failed: {e}") from e
-    finally:
-        socket.setdefaulttimeout(None)
 
     client.loop_start()
     try:

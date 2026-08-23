@@ -13,13 +13,14 @@ _SCTP_PROTO = getattr(socket, "IPPROTO_SCTP", 132)
 
 def get_local_ips() -> Set[str]:
     """Get all local IP addresses on this host."""
-    ips: Set[str] = {"127.0.0.1"}
+    ips: Set[str] = {"127.0.0.1", "::1"}
     try:
-        out = subprocess.check_output(["ip", "-o", "-4", "addr", "show"], text=True, timeout=2)
+        out = subprocess.check_output(["ip", "-o", "addr", "show"], text=True, timeout=2)
         for line in out.splitlines():
             parts = line.split()
             if len(parts) >= 4:
                 ip = parts[3].split("/")[0]
+                ip = ip.split("%")[0]
                 ips.add(ip)
     except Exception:
         try:
@@ -60,7 +61,6 @@ def probe_target(
 
     start_time = time.time()
     reachable = False
-    error_msg: Optional[str] = None
 
     if protocol == "tcp":
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -78,20 +78,22 @@ def probe_target(
             if port == 53:
                 dns_query = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x07example\x03com\x00\x00\x01\x00\x01"
                 sock.sendto(dns_query, (ip, port))
+            elif port == 123:
+                ntp_query = b"\x1b" + 47 * b"\x00"
+                sock.sendto(ntp_query, (ip, port))
             else:
                 sock.sendto(b"\x00", (ip, port))
             sock.recvfrom(1024)
             reachable = True
-        except socket.timeout:
-            reachable = False
-        except Exception:
+        except (socket.timeout, ConnectionRefusedError, OSError):
             reachable = False
         finally:
             sock.close()
     elif protocol == "icmp":
+        ping_timeout_sec = max(1, int(round(timeout)))
         try:
             completed = subprocess.run(
-                ["ping", "-c", "1", "-W", str(timeout), ip],
+                ["ping", "-c", "1", "-W", str(ping_timeout_sec), ip],
                 capture_output=True,
                 text=True,
                 timeout=timeout + 1,
@@ -112,16 +114,19 @@ def probe_target(
                 sock.close()
         except OSError:
             reachable = False
+    else:
+        reachable = False
 
     latency_ms = round((time.time() - start_time) * 1000, 2)
 
     if is_self:
-        passed = True
+        status = "SKIP"
         error_details: Optional[str] = (
             f"EXEMPT_SELF_HOST: Target {ip}:{port} ({name}) is the local interface of the probing host"
         )
     elif expected_blocked:
         passed = not reachable
+        status = "PASS" if passed else "FAIL"
         if reachable:
             error_details = (
                 f"UNAUTHORIZED_CONNECTIVITY_VIOLATION: Host can connect outside to "
@@ -131,6 +136,7 @@ def probe_target(
             error_details = None
     else:
         passed = reachable
+        status = "PASS" if passed else "FAIL"
         if not passed:
             error_details = f"EXPECTED_CONNECTIVITY_FAILED: Failed to connect to {name} ({ip}:{port})"
         else:
@@ -145,7 +151,7 @@ def probe_target(
         "protocol": protocol,
         "reachable": reachable,
         "expected_blocked": expected_blocked,
-        "status": "PASS" if passed else "FAIL",
+        "status": status,
         "latency_ms": latency_ms,
-        "error": error_details or error_msg,
+        "error": error_details,
     }
