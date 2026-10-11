@@ -367,9 +367,12 @@ make test    # before pushing
 
 ### Git hooks 🪝
 
-A pre-commit hook is provided in `.githooks/pre-commit` to automatically run `ruff`, `mypy`, and `pytest` before every commit.
+Git hooks are provided in `.githooks/` to ensure code quality and conventional commit standards before committing:
 
-To install / enable the hook:
+- `pre-commit` runs lockfile checks (`uv lock --check`), linting (`ruff check`), formatting (`ruff format --check`), type checking (`mypy`), and test suite (`pytest` with 100% coverage).
+- `commit-msg` validates that commit messages adhere to Conventional Commits format (`feat:`, `fix:`, `chore:`, etc.).
+
+To install / enable the hooks:
 
 ```bash
 make hooks

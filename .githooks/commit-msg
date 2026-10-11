@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+MSG_FILE="$1"
+
+if [ -z "$MSG_FILE" ] || [ ! -f "$MSG_FILE" ]; then
+    echo "Error: Commit message file not found: '$MSG_FILE'" >&2
+    exit 1
+fi
+
+COMMIT_MSG=$(head -n 1 "$MSG_FILE")
+
+# Allow merge, revert, fixup, and squash commits
+if [[ "$COMMIT_MSG" =~ ^(Merge|Revert|fixup!|squash!) ]]; then
+    exit 0
+fi
+
+# Conventional commit pattern: type(scope)?: description
+CONVENTIONAL_REGEX="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_.-]+\))?!?: .+$"
+
+if ! [[ "$COMMIT_MSG" =~ $CONVENTIONAL_REGEX ]]; then
+    echo "Error: Commit message does not follow Conventional Commits format." >&2
+    echo "Expected: <type>(<scope>): <subject> or <type>: <subject>" >&2
+    echo "Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert" >&2
+    echo "Actual message: '$COMMIT_MSG'" >&2
+    exit 1
+fi
