@@ -15,6 +15,11 @@ else
     exit 1
 fi
 
+if command -v uv >/dev/null 2>&1; then
+    echo "--> Checking uv lockfile consistency..."
+    uv lock --check
+fi
+
 echo "--> Checking ruff lint..."
 $RUN_CMD ruff check .
 

@@ -23,7 +23,7 @@ Guidelines for AI agents (and contributors) working in this repository.
 
 ## Verification commands
 
-Run these locally before pushing (these checks are also enforced locally by the pre-commit hook in `.githooks/pre-commit`):
+Run these locally before pushing (these checks are also enforced locally by git hooks in `.githooks/`):
 
 ```bash
 uv sync                          # install dev dependencies
@@ -33,7 +33,7 @@ uv run mypy src
 uv run pytest
 ```
 
-Enable the pre-commit hook with:
+Enable the git hooks (pre-commit and commit-msg) with:
 ```bash
 git config core.hooksPath .githooks
 # or via make:

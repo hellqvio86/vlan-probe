@@ -2,7 +2,13 @@
 
 import json
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+
+try:
+    import tomllib  # Python 3.11+
+except ImportError:
+    import tomli as tomllib  # type: ignore[no-redef]
 
 import pytest
 
@@ -121,7 +127,15 @@ def test_main_version(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFix
         main()
     assert excinfo.value.code == 0
     out = capsys.readouterr().out
+    assert "vlan-probe" in out
     assert __version__ in out
+
+
+def test_version_matches_pyproject() -> None:
+    pyproject_file = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    with open(pyproject_file, "rb") as f:
+        data = tomllib.load(f)
+    assert data["project"]["version"] == __version__
 
 
 def test_main_ndjson(
