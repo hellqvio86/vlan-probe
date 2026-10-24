@@ -114,3 +114,7 @@ ip = "10.10.1.20"
 port = 3868
 protocol = "sctp"
 expected_blocked = false
+
+# Optional: Prometheus node_exporter textfile collector reporting (--prometheus)
+# [prometheus]
+# textfile_path = "/var/lib/prometheus/node-exporter/vlan_probe.prom"

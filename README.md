@@ -20,10 +20,11 @@
   reachable; every deviation is reported as a violation 🔴.
 - **Concurrent execution** — multi-threaded worker pool (`-j` / `--concurrency`)
   to probe dozens of targets simultaneously.
-- **Flexible output** — human-friendly `table`, structured `json`, or
-  streaming `ndjson`.
-- **Alerting built-in** — `--strict` exit codes for automation, plus scheduled
-  **MQTT reporting** via `systemd` timers 📡.
+- **Flexible output** — human-friendly `table`, structured `json`,
+  streaming `ndjson`, or `prometheus` exposition format.
+- **Alerting & observability built-in** — `--strict` exit codes for automation,
+  scheduled **MQTT reporting**, and **Prometheus `node_exporter` textfile**
+  export (`--prometheus`) via `systemd` timers 📡.
 - **Boring & reliable** — typed Python 3.10+, zero long-running daemons, 100%
   test coverage.
 
@@ -164,6 +165,7 @@ config file and makes containerized/systemd deployments trivial.
 | `VLAN_PROBE_FORMAT`        | output format               | `ndjson`               |
 | `VLAN_PROBE_STRICT`        | strict mode (exit 1)        | `false`                |
 | `VLAN_PROBE_CONCURRENCY`   | worker thread pool size     | `10`                   |
+| `VLAN_PROBE_PROMETHEUS_TEXTFILE` | Prometheus `.prom` textfile path | `/var/lib/prometheus/node-exporter/vlan_probe.prom` |
 
 **MQTT (`[mqtt]` section, overridable per-key):**
 
@@ -197,11 +199,13 @@ vlan-probe --mqtt
 ```
 -v, --version             Show program's version number and exit
 -c, --config PATH         Path to config TOML/JSON file (default: /etc/vlan_probe.toml)
--f, --format FORMAT       Output format: ndjson, json, or table (default: ndjson)
+-f, --format FORMAT       Output format: ndjson, json, table, or prometheus (default: ndjson)
 -t, --timeout SECONDS     Socket connection timeout (default: 2.0)
 -j, --concurrency INT     Number of concurrent worker threads (default: 10)
 -s, --strict              Exit with code 1 if any violations occur
 --mqtt                    Publish results to MQTT (requires [mqtt] section or VLAN_PROBE_MQTT_HOST)
+--prometheus              Write Prometheus metrics to node_exporter textfile collector
+--prometheus-textfile PATH  Custom path for Prometheus .prom textfile (implies --prometheus)
 --color [auto|always|never]  Colorize output (default: auto)
 ```
 

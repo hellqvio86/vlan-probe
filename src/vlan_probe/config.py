@@ -17,10 +17,11 @@ DEFAULT_CONFIG_PATH = "/etc/vlan_probe.toml"
 
 DEFAULT_MQTT_PORT = 1883
 DEFAULT_TOPIC_PREFIX = "vlan-probe"
+DEFAULT_PROMETHEUS_TEXTFILE_PATH = "/var/lib/prometheus/node-exporter/vlan_probe.prom"
 
 DEFAULT_TIMEOUT = 2.0
 DEFAULT_FORMAT = "ndjson"
-VALID_FORMATS = ("ndjson", "json", "table")
+VALID_FORMATS = ("ndjson", "json", "table", "prometheus")
 DEFAULT_CONCURRENCY = 10
 SUPPORTED_PROTOCOLS = ("tcp", "udp", "icmp", "sctp")
 
@@ -29,6 +30,7 @@ ENV_TIMEOUT = "VLAN_PROBE_TIMEOUT"
 ENV_FORMAT = "VLAN_PROBE_FORMAT"
 ENV_STRICT = "VLAN_PROBE_STRICT"
 ENV_CONCURRENCY = "VLAN_PROBE_CONCURRENCY"
+ENV_PROMETHEUS_TEXTFILE = "VLAN_PROBE_PROMETHEUS_TEXTFILE"
 
 ENV_MQTT_HOST = "VLAN_PROBE_MQTT_HOST"
 ENV_MQTT_PORT = "VLAN_PROBE_MQTT_PORT"
@@ -56,7 +58,14 @@ MQTT_ENV_VARS = (
     ENV_MQTT_CONNECT_TIMEOUT,
 )
 
-ALL_ENV_VARS = (ENV_CONFIG_PATH, ENV_TIMEOUT, ENV_FORMAT, ENV_STRICT, ENV_CONCURRENCY) + MQTT_ENV_VARS
+ALL_ENV_VARS = (
+    ENV_CONFIG_PATH,
+    ENV_TIMEOUT,
+    ENV_FORMAT,
+    ENV_STRICT,
+    ENV_CONCURRENCY,
+    ENV_PROMETHEUS_TEXTFILE,
+) + MQTT_ENV_VARS
 
 _TRUE_VALUES = ("1", "true", "yes", "on")
 
@@ -130,11 +139,19 @@ class MQTTConfig:
 
 
 @dataclass
+class PrometheusConfig:
+    """Prometheus node_exporter textfile collector settings."""
+
+    textfile_path: str = DEFAULT_PROMETHEUS_TEXTFILE_PATH
+
+
+@dataclass
 class Config:
     """Full vlan_probe configuration."""
 
     targets: List[Dict[str, Any]]
     mqtt: Optional[MQTTConfig] = None
+    prometheus: Optional[PrometheusConfig] = None
 
 
 def _fail(message: str) -> NoReturn:
@@ -349,9 +366,11 @@ def load_config(config_path: str) -> Config:
     if isinstance(config_data, dict):
         targets = config_data.get("targets", [])
         mqtt_section = config_data.get("mqtt")
+        prom_section = config_data.get("prometheus")
     else:
         targets = config_data if isinstance(config_data, list) else []
         mqtt_section = None
+        prom_section = None
 
     if not isinstance(targets, list):
         _fail("'targets' in config must be a list")
@@ -362,7 +381,9 @@ def load_config(config_path: str) -> Config:
     if mqtt is not None and mqtt.password:
         _warn_insecure_permissions(config_path)
 
-    return Config(targets=validated_targets, mqtt=mqtt)
+    prometheus = _build_prometheus_config(prom_section)
+
+    return Config(targets=validated_targets, mqtt=mqtt, prometheus=prometheus)
 
 
 def _build_mqtt_config(mqtt_section: Any) -> Optional[MQTTConfig]:
@@ -372,4 +393,27 @@ def _build_mqtt_config(mqtt_section: Any) -> Optional[MQTTConfig]:
         return parse_mqtt_config(mqtt_section, env_overrides)
     if "host" in env_overrides:
         return parse_mqtt_config({}, env_overrides)
+    return None
+
+
+def parse_prometheus_config(section: Any, env_textfile: Optional[str] = None) -> PrometheusConfig:
+    """Parse and validate the ``[prometheus]`` config section, applying env override."""
+    if not isinstance(section, dict):
+        _fail("'prometheus' in config must be a table")
+
+    raw_path = (
+        env_textfile if env_textfile is not None else section.get("textfile_path", DEFAULT_PROMETHEUS_TEXTFILE_PATH)
+    )
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        _fail("'prometheus.textfile_path' must be a non-empty string")
+    return PrometheusConfig(textfile_path=raw_path.strip())
+
+
+def _build_prometheus_config(prom_section: Any) -> Optional[PrometheusConfig]:
+    """Build a PrometheusConfig from the config file section and env override."""
+    env_textfile = os.environ.get(ENV_PROMETHEUS_TEXTFILE)
+    if prom_section is not None:
+        return parse_prometheus_config(prom_section, env_textfile)
+    if env_textfile is not None:
+        return parse_prometheus_config({}, env_textfile)
     return None
