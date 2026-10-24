@@ -9,8 +9,10 @@ from vlan_probe.config import (
     DEFAULT_CONCURRENCY,
     DEFAULT_CONFIG_PATH,
     DEFAULT_FORMAT,
+    DEFAULT_PROMETHEUS_TEXTFILE_PATH,
     DEFAULT_TIMEOUT,
     MQTTConfig,
+    PrometheusConfig,
     default_concurrency,
     default_config_path,
     default_format,
@@ -18,6 +20,7 @@ from vlan_probe.config import (
     default_timeout,
     load_config,
     parse_mqtt_config,
+    parse_prometheus_config,
     validate_target,
 )
 
@@ -427,3 +430,50 @@ def test_load_config_permissions_stat_oserror(
     assert cfg.mqtt is not None
     err = capsys.readouterr().err
     assert "Warning: Config file" not in err
+
+
+def test_parse_prometheus_config_defaults() -> None:
+    cfg = parse_prometheus_config({})
+    assert cfg == PrometheusConfig(textfile_path=DEFAULT_PROMETHEUS_TEXTFILE_PATH)
+
+
+def test_parse_prometheus_config_custom_and_env() -> None:
+    cfg = parse_prometheus_config({"textfile_path": " /tmp/a.prom "})
+    assert cfg == PrometheusConfig(textfile_path="/tmp/a.prom")
+    cfg_env = parse_prometheus_config({"textfile_path": "/tmp/a.prom"}, env_textfile="/tmp/env.prom")
+    assert cfg_env == PrometheusConfig(textfile_path="/tmp/env.prom")
+
+
+@pytest.mark.parametrize(
+    ("section", "env_val"),
+    [
+        ("not-a-dict", None),
+        ({"textfile_path": ""}, None),
+        ({"textfile_path": "   "}, None),
+        ({"textfile_path": 123}, None),
+        ({}, ""),
+    ],
+)
+def test_parse_prometheus_config_invalid(section: Any, env_val: Any) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        parse_prometheus_config(section, env_textfile=env_val)
+    assert excinfo.value.code == 2
+
+
+def test_load_config_with_prometheus_section_and_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[[targets]]\nip = "10.0.0.1"\n\n[prometheus]\ntextfile_path = "/custom/vlan_probe.prom"\n')
+    cfg = load_config(str(config_file))
+    assert cfg.prometheus == PrometheusConfig(textfile_path="/custom/vlan_probe.prom")
+
+    monkeypatch.setenv("VLAN_PROBE_PROMETHEUS_TEXTFILE", "/env/vlan_probe.prom")
+    cfg_env = load_config(str(config_file))
+    assert cfg_env.prometheus == PrometheusConfig(textfile_path="/env/vlan_probe.prom")
+
+
+def test_load_config_prometheus_from_env_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VLAN_PROBE_PROMETHEUS_TEXTFILE", "/env/only.prom")
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[[targets]]\nip = "10.0.0.1"\n')
+    cfg = load_config(str(config_file))
+    assert cfg.prometheus == PrometheusConfig(textfile_path="/env/only.prom")

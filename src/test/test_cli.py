@@ -20,8 +20,9 @@ from vlan_probe.cli import (
     may_colorize,
     resolve_color_mode,
 )
-from vlan_probe.config import Config, MQTTConfig
+from vlan_probe.config import Config, MQTTConfig, PrometheusConfig
 from vlan_probe.mqtt_report import MQTTPublishError
+from vlan_probe.prometheus_report import PrometheusWriteError
 
 PASS_RESULT: Dict[str, object] = {
     "timestamp": "2026-08-15T08:00:00+00:00",
@@ -398,3 +399,71 @@ def test_main_table_with_skip(
     main()
     out_plain = capsys.readouterr().out
     assert "SKIP" in out_plain
+
+
+def test_main_format_prometheus(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cli_env["config"] = Config(targets=[{"name": "PASS"}, {"name": "FAIL"}])
+    _run_main(monkeypatch, ["-f", "prometheus"])
+    main()
+    out = capsys.readouterr().out
+    assert "# HELP vlan_probe_target_status" in out
+    assert "vlan_probe_targets_total 2" in out
+    assert "vlan_probe_targets_passed 1" in out
+    assert "vlan_probe_targets_failed 1" in out
+
+
+def test_main_prometheus_flag_writes_textfile_all_formats(
+    cli_env: Dict[str, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    prom_path = tmp_path / "metrics.prom"
+    cli_env["config"] = Config(
+        targets=[{"name": "PASS"}],
+        prometheus=PrometheusConfig(textfile_path=str(prom_path)),
+    )
+
+    _run_main(monkeypatch, ["--prometheus", "-f", "ndjson"])
+    main()
+    assert prom_path.exists()
+    ndjson_lines = capsys.readouterr().out.strip().splitlines()
+    assert len(ndjson_lines) == 2
+    assert json.loads(ndjson_lines[1])["target_vlan"] == "Prometheus"
+
+    _run_main(monkeypatch, ["--prometheus", "-f", "json"])
+    main()
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["prometheus"]["status"] == "PASS"
+    assert summary["prometheus"]["textfile_path"] == str(prom_path)
+
+    _run_main(monkeypatch, ["--prometheus", "-f", "table", "--color", "always"])
+    main()
+    table_color = capsys.readouterr().out
+    assert "Prometheus Report" in table_color
+    assert f"Wrote {prom_path}" in table_color
+
+    _run_main(monkeypatch, ["--prometheus-textfile", str(prom_path), "-f", "table", "--color", "never"])
+    main()
+    table_plain = capsys.readouterr().out
+    assert "Prometheus Report" in table_plain
+    assert f"Wrote {prom_path}" in table_plain
+
+
+def test_main_prometheus_failure_exits_2(
+    cli_env: Dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cli_env["config"] = Config(targets=[{"name": "PASS"}])
+    monkeypatch.setattr(
+        "vlan_probe.cli.write_prometheus_textfile",
+        lambda cfg, content: (_ for _ in ()).throw(PrometheusWriteError("disk full")),
+    )
+    _run_main(monkeypatch, ["--prometheus", "-f", "table", "--color", "always"])
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 2
+    out = capsys.readouterr().out
+    assert "Prometheus Report" in out
+    assert "disk full" in out

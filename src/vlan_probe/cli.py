@@ -9,7 +9,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import __version__
 from .config import (
+    DEFAULT_PROMETHEUS_TEXTFILE_PATH,
     VALID_FORMATS,
+    PrometheusConfig,
     default_concurrency,
     default_config_path,
     default_format,
@@ -19,6 +21,7 @@ from .config import (
 )
 from .mqtt_report import MQTTPublishError, build_messages, publish_to_mqtt
 from .probe import get_local_ips, probe_target
+from .prometheus_report import PrometheusWriteError, build_prometheus_metrics, write_prometheus_textfile
 
 # ANSI color codes for interactive (TTY) output.
 _COLORS = {
@@ -101,6 +104,16 @@ def main() -> None:
         help="Publish probe results to MQTT (requires a [mqtt] config section)",
     )
     parser.add_argument(
+        "--prometheus",
+        action="store_true",
+        help="Write Prometheus metrics to node_exporter textfile collector",
+    )
+    parser.add_argument(
+        "--prometheus-textfile",
+        default=None,
+        help="Path to Prometheus node_exporter .prom textfile (implies --prometheus)",
+    )
+    parser.add_argument(
         "--color",
         choices=["auto", "always", "never"],
         default="auto",
@@ -130,8 +143,9 @@ def main() -> None:
     skipped = [r for r in results if r["status"] == "SKIP"]
     passed = [r for r in results if r["status"] == "PASS"]
 
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
     summary = {
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "timestamp": now_utc.isoformat(),
         "total_probed": len(results),
         "passed": len(passed),
         "failed": len(violations),
@@ -175,21 +189,61 @@ def main() -> None:
             "error": mqtt_error,
         }
 
+    prom_res = None
+    prom_failed = False
+    if args.prometheus or args.prometheus_textfile:
+        textfile_path = (
+            args.prometheus_textfile
+            if args.prometheus_textfile
+            else (config.prometheus.textfile_path if config.prometheus else DEFAULT_PROMETHEUS_TEXTFILE_PATH)
+        )
+        prom_cfg = PrometheusConfig(textfile_path=textfile_path)
+        prom_content = build_prometheus_metrics(results, summary, timestamp_seconds=now_utc.timestamp())
+        prom_error = None
+        try:
+            write_prometheus_textfile(prom_cfg, prom_content)
+        except PrometheusWriteError as e:
+            prom_error = str(e)
+            prom_failed = True
+
+        prom_res = {
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "target_name": f"Prometheus Report ({prom_cfg.textfile_path})",
+            "target_vlan": "Prometheus",
+            "target_ip": prom_cfg.textfile_path,
+            "port": 0,
+            "protocol": "file",
+            "reachable": not prom_failed,
+            "expected_blocked": False,
+            "status": "FAIL" if prom_failed else "PASS",
+            "textfile_path": prom_cfg.textfile_path,
+            "error": prom_error,
+        }
+
     if args.format == "ndjson":
         for res in results:
             print(colorize_json_statuses(json.dumps(res), color))
         if mqtt_res:
             print(colorize_json_statuses(json.dumps(mqtt_res), color))
+        if prom_res:
+            print(colorize_json_statuses(json.dumps(prom_res), color))
 
     elif args.format == "json":
         if mqtt_res:
             summary["mqtt"] = mqtt_res
+        if prom_res:
+            summary["prometheus"] = prom_res
         print(colorize_json_statuses(json.dumps(summary, indent=2), color))
+
+    elif args.format == "prometheus":
+        sys.stdout.write(build_prometheus_metrics(results, summary, timestamp_seconds=now_utc.timestamp()))
 
     elif args.format == "table":
         all_rows = list(results)
         if mqtt_res:
             all_rows.append(mqtt_res)
+        if prom_res:
+            all_rows.append(prom_res)
 
         vlan_w = max(12, max((len(str(r["target_vlan"])) for r in all_rows), default=12))
         name_w = max(30, max((len(str(r["target_name"])) for r in all_rows), default=30))
@@ -249,6 +303,23 @@ def main() -> None:
             mname_str = f"{mqtt_res['target_name']:<{name_w}}"
             mep_str = f"{endpoint:<{ep_w}}"
             print(f"{mvlan_str} {mname_str} {mep_str} {status_disp} {details_disp}")
+        if prom_res:
+            endpoint = f"{prom_res['target_ip']} ({prom_res['protocol']})"
+            details = prom_res["error"] if prom_res["error"] else f"Wrote {prom_res['textfile_path']}"
+            status = str(prom_res["status"])
+            status_text = f"{status:<8}"
+            if color:
+                status_color = "red" if status == "FAIL" else "green"
+                details_color = "red" if status == "FAIL" else "green"
+                status_disp = colorize(status_text, status_color)
+                details_disp = colorize(str(details), details_color)
+            else:
+                status_disp = status_text
+                details_disp = str(details)
+            pvlan_str = f"{prom_res['target_vlan']:<{vlan_w}}"
+            pname_str = f"{prom_res['target_name']:<{name_w}}"
+            pep_str = f"{endpoint:<{ep_w}}"
+            print(f"{pvlan_str} {pname_str} {pep_str} {status_disp} {details_disp}")
 
     if args.strict and violations:
         head = f"{len(violations)} unauthorized connection(s) detected!"
@@ -260,7 +331,7 @@ def main() -> None:
             sys.stderr.write((colorize(line, "red") if color else line) + "\n")
         sys.exit(1)
 
-    if mqtt_failed:
+    if mqtt_failed or prom_failed:
         sys.exit(2)
 
 
