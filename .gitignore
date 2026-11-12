@@ -2,4 +2,7 @@ __pycache__/
 *.pyc
 vlan_probe.toml
 .coverage
+.coverage.*
+coverage.xml
+coverage.json
 debug/

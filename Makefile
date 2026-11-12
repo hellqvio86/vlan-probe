@@ -19,7 +19,8 @@ format: .venv
 
 test: .venv
 	.venv/bin/mypy src
-	.venv/bin/pytest --cov=src/vlan_probe --cov-report=term-missing
+	.venv/bin/pytest --cov=src/vlan_probe --cov-report=term-missing --cov-report=json
+	.venv/bin/python3 .github/scripts/generate_coverage_badge.py
 
 run: .venv
 	.venv/bin/python3 -m vlan_probe $(ARGS)
