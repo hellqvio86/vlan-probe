@@ -46,7 +46,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
-          python-version: "3.12"
+          python-version: "3.15"
 
       - name: Install dependencies
         run: uv sync
@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
 
     steps:
       - name: Checkout code
@@ -171,7 +171,7 @@ jobs:
         if: steps.check_release.outputs.exists == 'false'
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
-          python-version: "3.12"
+          python-version: "3.15"
 
       - name: Install dependencies
         if: steps.check_release.outputs.exists == 'false'
@@ -215,7 +215,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
-          python-version: "3.12"
+          python-version: "3.15"
 
       - name: Install dependencies
         run: uv sync
